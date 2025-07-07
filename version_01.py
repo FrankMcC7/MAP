@@ -23,6 +23,7 @@ MAP_PATH            = r"\\share\\EmailRoutes.xlsx"
 UNKNOWN_CSV         = r"\\share\\unknown_senders.csv"
 DEFAULT_SAVE_PATH   = r"\\share\\DefaultArchive"
 SUMMARY_PATH        = r"\\share\\ArchiveSummary.xlsx"  # summary of each run
+# For shared mailboxes, specify either display name or SMTP address
 MAILBOXES           = ["Funds Ops", "NAV Alerts"]
 SAVE_TYPE           = 3   # olMsg Unicode
 MAX_PATH_LENGTH     = 200  # max full path length before truncation
@@ -43,10 +44,6 @@ def load_map_sheet() -> pd.DataFrame:
 
 
 def build_maps(df: pd.DataFrame) -> Tuple[dict, dict]:
-    """Return two dictionaries:
-    * exact:   sender -> root path (GenericSender == 'no')
-    * generic: sender -> list of (keywords list, root path) (GenericSender == 'yes')
-    """
     exact: dict[str, str] = {}
     generic: dict[str, List[Tuple[List[str], str]]] = {}
     for _, row in df.iterrows():
@@ -60,7 +57,6 @@ def build_maps(df: pd.DataFrame) -> Tuple[dict, dict]:
 
 
 def add_row(df: pd.DataFrame, sender: str, root: str) -> bool:
-    """Append a new non-generic row if sender not already listed; return True if added."""
     if sender.lower() in df["SenderEmail"].str.lower().values:
         return False
     df.loc[len(df)] = [sender, "no", "", root]
@@ -69,19 +65,14 @@ def add_row(df: pd.DataFrame, sender: str, root: str) -> bool:
 
 def infer_route(sender: str, subject: str, df: pd.DataFrame,
                 exact: dict, generic: dict) -> str | None:
-    """Attempt to deduce a save path for totally unknown senders."""
     domain = sender.split("@")[-1].lower()
     candidates = df[df["SenderEmail"].str.lower().str.endswith(domain)]
-
-    # Case 1 – clone first non-generic row with same domain
     non_generic = candidates[candidates["GenericSender"] == "no"]
     if not non_generic.empty:
         root = non_generic.iloc[0]["RootPath"]
         if add_row(df, sender, root):
             exact[sender.lower()] = root
         return root
-
-    # Case 2 – domain has only generic rows; match by keyword
     for _, r in candidates.iterrows():
         keys = [k.strip().lower() for k in r["SubjectKey"].split(",") if k.strip()]
         if any(k in subject.lower() for k in keys):
@@ -89,26 +80,18 @@ def infer_route(sender: str, subject: str, df: pd.DataFrame,
             if add_row(df, sender, root):
                 exact[sender.lower()] = root
             return root
-
     return None
 
 
 def resolve_path(sender: str, subject: str, df: pd.DataFrame,
                  exact: dict, generic: dict) -> str | None:
-    """Return a root path or None if completely unresolved."""
     sender_lc = sender.lower()
-
-    # Direct hit – exact non-generic row
     if sender_lc in exact:
         return exact[sender_lc]
-
-    # Exact hit – generic row; match keywords
     if sender_lc in generic:
         for keywords, root in generic[sender_lc]:
             if any(k in subject.lower() for k in keywords):
                 return root
-
-    # Fallback inference
     return infer_route(sender, subject, df, exact, generic)
 
 
@@ -123,7 +106,7 @@ def outlook_restrict_clause(start: dt.date, end: dt.date) -> str:
     return f"[ReceivedTime] >= '{s}' AND [ReceivedTime] <= '{e}'"
 
 
-def detect_period(item) -> Tuple[int, int]:  # (year, month)
+def detect_period(item) -> Tuple[int, int]:
     blob = " ".join([item.Subject or ""] + [att.FileName for att in item.Attachments])
     try:
         d = nlp.parse(blob, fuzzy=True, default=item.ReceivedTime)
@@ -141,10 +124,6 @@ def detect_period(item) -> Tuple[int, int]:  # (year, month)
 
 # ───────────────────────────────────────── PATH SHORTENER ────────────────────────────────────
 def shorten_filename(target_dir: str, base_name: str, ext: str) -> str:
-    """
-    Ensures the full path (target_dir + os.sep + base_name + ext) does not exceed MAX_PATH_LENGTH.
-    If it does, truncates base_name to fit within the limit.
-    """
     full_path = os.path.join(target_dir, base_name + ext)
     if len(full_path) <= MAX_PATH_LENGTH:
         return base_name + ext
@@ -168,7 +147,6 @@ def save_message(item, root: str):
 
 # ───────────────────────────────────────── CATEGORY HELPER ────────────────────────────────────
 def set_category(item: Any, category: str):
-    """Assign an Outlook category to the item and persist it."""
     item.Categories = category
     item.Save()
 
@@ -178,15 +156,26 @@ def archive_window(start: dt.date, end: dt.date):
     exact, generic = build_maps(df)
     initial_rows = len(df)
 
-    outlook = win32.Dispatch("Outlook.Application").GetNamespace("MAPI")
-    flt     = outlook_restrict_clause(start, end)
+    ns = win32.Dispatch("Outlook.Application").GetNamespace("MAPI")
+    flt = outlook_restrict_clause(start, end)
 
     total = saved_mapped = saved_default = errors = 0
     unresolved: List[Tuple[str, str]] = []
 
     for mbox in MAILBOXES:
-        inbox = outlook.Folders(mbox).Folders("Inbox").Items.Restrict(flt)
-        for itm in inbox:
+        # Try local store, else shared mailbox
+        try:
+            store = ns.Folders(mbox)
+            inbox_folder = store.Folders("Inbox")
+        except Exception:
+            recipient = ns.CreateRecipient(mbox)
+            recipient.Resolve()
+            if not recipient.Resolved:
+                raise ValueError(f"Mailbox '{mbox}' not found or not resolved")
+            inbox_folder = ns.GetSharedDefaultFolder(recipient, win32.constants.olFolderInbox)
+        items = inbox_folder.Items.Restrict(flt)
+
+        for itm in items:
             total += 1
             try:
                 path = resolve_path(
@@ -204,17 +193,14 @@ def archive_window(start: dt.date, end: dt.date):
             except Exception:
                 errors += 1
 
-    # Persist any new mappings
     if len(df) > initial_rows:
         df.to_excel(MAP_PATH, index=False, engine="openpyxl")
 
-    # Log completely unresolved items
     if unresolved:
         pd.DataFrame(unresolved, columns=["Sender", "Subject"]).to_csv(
             UNKNOWN_CSV, mode="a", header=False, index=False
         )
 
-    # Write summary file
     summary_df = pd.DataFrame([{  
         "RunDate": dt.date.today(),
         "TotalEmails": total,
@@ -234,61 +220,37 @@ def launch_gui():
     root.title("Email Archiver – Select Dates")
 
     mode = tk.StringVar(value="single")
-
-    def toggle():
-        end_entry.state(["!disabled"] if mode.get() == "range" else ["disabled"])
-
+    def toggle(): end_entry.state(["!disabled"] if mode.get()=="range" else ["disabled"])
     def run():
         try:
-            if mode.get() == "single":
-                d = start_entry.get_date()
-                archive_window(d, d)
-            else:
-                s, e = start_entry.get_date(), end_entry.get_date()
-                archive_window(min(s, e), max(s, e))
-            messagebox.showinfo("Done", "Archiving complete.")
+            if mode.get()=="single": d=start_entry.get_date(); archive_window(d,d)
+            else: s,e=start_entry.get_date(),end_entry.get_date(); archive_window(min(s,e),max(s,e))
+            messagebox.showinfo("Done","Archiving complete.")
         except Exception as err:
-            messagebox.showerror("Error", str(err))
+            messagebox.showerror("Error",str(err))
 
-    ttk.Radiobutton(root, text="Single day", variable=mode, value="single", command=toggle).grid(row=0, column=0, sticky="w")
-    ttk.Radiobutton(root, text="Date range", variable=mode, value="range", command=toggle).grid(row=1, column=0, sticky="w")
-
-    ttk.Label(root, text="Start").grid(row=0, column=1, padx=4)
-    start_entry = DateEntry(root)
-    start_entry.grid(row=0, column=2, padx=4)
-
-    ttk.Label(root, text="End").grid(row=1, column=1, padx=4)
-    end_entry = DateEntry(root)
-    end_entry.state(["disabled"])
-    end_entry.grid(row=1, column=2, padx=4)
-
-    ttk.Button(root, text="Run", command=run).grid(row=2, column=0, columnspan=3, pady=8)
+    ttk.Radiobutton(root,text="Single day",variable=mode,value="single",command=toggle).grid(row=0,column=0,sticky="w")
+    ttk.Radiobutton(root,text="Date range",variable=mode,value="range",command=toggle ).grid(row=1,column=0,sticky="w")
+    ttk.Label(root,text="Start").grid(row=0,column=1,padx=4)
+    start_entry=DateEntry(root); start_entry.grid(row=0,column=2,padx=4)
+    ttk.Label(root,text="End").grid(row=1,column=1,padx=4)
+    end_entry=DateEntry(root); end_entry.state(["disabled"]); end_entry.grid(row=1,column=2,padx=4)
+    ttk.Button(root,text="Run",command=run).grid(row=2,column=0,columnspan=3,pady=8)
     root.mainloop()
 
 # ───────────────────────────────────────── CLI ENTRY ────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="Archive shared‑mailbox e‑mail")
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--yesterday", action="store_true", help="Previous calendar day")
-    group.add_argument("--date", type=parse_cli_date, metavar="YYYY-MM-DD", help="Single date")
-    group.add_argument("--range", nargs=2, type=parse_cli_date, metavar=("FROM", "TO"), help="Inclusive date range")
-    group.add_argument("--ui", action="store_true", help="Tkinter calendar picker")
+    parser=argparse.ArgumentParser(description="Archive shared‑mailbox e‑mail")
+    group=parser.add_mutually_exclusive_group()
+    group.add_argument("--yesterday",action="store_true",help="Previous calendar day")
+    group.add_argument("--date",type=parse_cli_date,metavar="YYYY-MM-DD",help="Single date")
+    group.add_argument("--range",nargs=2,type=parse_cli_date,metavar=("FROM","TO"),help="Inclusive date range")
+    group.add_argument("--ui",action="store_true",help="Tkinter calendar picker")
+    args=parser.parse_args()
+    if args.ui: launch_gui(); return
+    if args.yesterday: d=dt.date.today()-dt.timedelta(days=1); archive_window(d,d)
+    elif args.date: archive_window(args.date,args.date)
+    elif args.range: s,e=min(args.range),max(args.range); archive_window(s,e)
+    else: parser.error("Specify --ui, --yesterday, --date, or --range")
 
-    args = parser.parse_args()
-
-    if args.ui:
-        launch_gui()
-        return
-    if args.yesterday:
-        d = dt.date.today() - dt.timedelta(days=1)
-        archive_window(d, d)
-    elif args.date:
-        archive_window(args.date, args.date)
-    elif args.range:
-        s, e = min(args.range), max(args.range)
-        archive_window(s, e)
-    else:
-        parser.error("Specify --ui, --yesterday, --date, or --range")
-
-if __name__ == "__main__":
-    main()
+if __name__=="__main__": main()
