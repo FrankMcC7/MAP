@@ -41,12 +41,18 @@ def _clean(v):
     if isinstance(v,str) and v.strip()=="": return None
     return str(v)
 def eq_pred(v):
-    v=_clean(v)
-    if v is None: return lambda *_:True
+    v = _clean(v)
+    if v is None:
+        return lambda *_: True
+
+    # Regex still supported
     if v.startswith("/") and v.endswith("/"):
-        pat=re.compile(v[1:-1],re.I); return lambda s,*_: bool(pat.search(s or ""))
-    targets=[t.casefold() for t in v.split(",") if t.strip()]
-    return lambda s,*_: (s or "").casefold() in targets
+        pat = re.compile(v[1:-1], re.IGNORECASE)
+        return lambda s, *_: bool(pat.search(s or ""))
+
+    # Split on semicolons instead of commas
+    targets = [t.casefold() for t in re.split(r"\s*;\s*", v) if t.strip()]
+    return lambda s, *_: (s or "").casefold() in targets
 def kw_regex_pred(v):
     v=_clean(v)
     if v is None: return lambda *_:True
