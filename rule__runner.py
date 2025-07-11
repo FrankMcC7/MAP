@@ -1,37 +1,27 @@
 """
-outlook_rule_runner.py  —  Outlook Rule Runner (enhanced)
+outlook_rule_runner.py  –  Outlook Rule Runner (enhanced + NaN-safe)
 
-• Reads an Excel “RuleBook” (sheet: Rules) that lists custom rules
-  Columns (template already provided):
-      Mailbox (required)
-      RuleName (required)
-      ActionMoveTo (required)
-      Enabled           (yes / no, optional — default yes)
-      SenderMatch       (optional)
-      SubjectContains   (optional — comma keywords OR /regex/)
-      Category          (optional — comma list)
+WHAT IT DOES
+------------
+• Reads Excel “RuleBook” (sheet = Rules) with columns:
+      Mailbox (req)   RuleName (req)   ActionMoveTo (req)
+      Enabled (yes/no)   SenderMatch   SubjectContains   Category
+  Optional columns may be left blank.
 
-• Behaviour checklist implemented:
-      – Empty Subject/Category → no extra filter
-      – Comma or /regex/ filters for SubjectContains & Category
-      – Case-insensitive comparisons
-      – Default archive path “Archive\<RuleName>” if ActionMoveTo blank
-      – Recursive folder creation in any mailbox
-      – Detailed logging of every move
+• Processes the *Inbox* of each mailbox, executing rules:
+      – Sender, Subject, Category predicates (keyword or /regex/)
+      – Date-window filter: yesterday | thismonth | all | custom range
+      – Default archive path: Archive\<RuleName> if ActionMoveTo blank
+      – Creates folders recursively across mailboxes
+      – Logs every move to outlook_rule_runner.log
 
-• Date-window filters:
-      --period  yesterday  → previous calendar day
-      --period  thismonth  → from 1st of current month to now
-      --period  all        → whole inbox
-      --period  custom --start YYYY-MM-DD --end YYYY-MM-DD
+• CLI / Task-scheduler friendly:
+      python outlook_rule_runner.py -p yesterday
+  Without args, an interactive console menu appears.
 
-• If run with NO arguments, an interactive menu appears.
-
-• Designed to run head-less via Windows Task Scheduler, e.g.:
-      python outlook_rule_runner.py --period yesterday
-
-Dependencies:
-      pip install pandas pywin32 openpyxl
+DEPENDENCIES
+------------
+    pip install pandas pywin32 openpyxl
 """
 
 import argparse
@@ -44,9 +34,7 @@ from pathlib import Path
 import pandas as pd
 import win32com.client as win32  # pywin32
 
-# ────────────────────────────────────────────────────────────
-# CONFIGURATION
-# ────────────────────────────────────────────────────────────
+# ──────────────────────────── CONFIG ────────────────────────────
 RULEBOOK_PATH = Path(__file__).with_name("Outlook_Rule_Template.xlsx")
 LOG_PATH = Path(__file__).with_suffix(".log")
 LOG_LEVEL = logging.INFO
@@ -57,9 +45,7 @@ logging.basicConfig(
     handlers=[logging.FileHandler(LOG_PATH, "a", "utf-8"), logging.StreamHandler()],
 )
 
-# ────────────────────────────────────────────────────────────
-# Outlook helpers
-# ────────────────────────────────────────────────────────────
+# ──────────────────────────── Outlook helpers ────────────────────────────
 def get_mapi_ns():
     return win32.Dispatch("Outlook.Application").GetNamespace("MAPI")
 
@@ -95,26 +81,37 @@ def categories_of(mail):
         return []
     return [c.strip().casefold() for c in cats.split(",")]
 
-# ────────────────────────────────────────────────────────────
-# Predicate builders
-# ────────────────────────────────────────────────────────────
-def build_eq_pred(value: str):
-    if not value or value.strip() == "":
+# ──────────────────────────── Predicate builders ─────────────────────────
+def _clean(value):
+    """Return None if value is NaN/None/empty, else str(value)."""
+    if value is None:
+        return None
+    if isinstance(value, float) and pd.isna(value):
+        return None
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    return str(value)
+
+
+def build_eq_pred(value):
+    value = _clean(value)
+    if value is None:
         return lambda *_: True
     target = value.casefold()
     return lambda text, *_: (text or "").casefold() == target
 
 
-def build_kw_or_regex_pred(value: str):
-    if not value or value.strip() == "":
+def build_kw_or_regex_pred(value):
+    value = _clean(value)
+    if value is None:
         return lambda *_: True
 
-    s = value.strip()
-    if s.startswith("/") and s.endswith("/"):
-        pattern = re.compile(s[1:-1], re.IGNORECASE)
+    value = value.strip()
+    if value.startswith("/") and value.endswith("/"):
+        pattern = re.compile(value[1:-1], re.IGNORECASE)
         return lambda text, *_: bool(pattern.search(text or ""))
     else:
-        keywords = [k.casefold() for k in s.split(",") if k.strip()]
+        keywords = [k.casefold() for k in value.split(",") if k.strip()]
         return lambda text, *_: any(k in (text or "").casefold() for k in keywords)
 
 
@@ -138,11 +135,10 @@ def received_time_pred(period: str, start_dt=None, end_dt=None):
 
     return lambda rt, *_: start <= rt <= end
 
-# ────────────────────────────────────────────────────────────
-# Core processing
-# ────────────────────────────────────────────────────────────
+# ───────────────────────────── Core processing ───────────────────────────
 def load_rules(path: Path) -> pd.DataFrame:
     df = pd.read_excel(path, sheet_name="Rules")
+    df = df.where(pd.notnull(df), None)  # turn every NaN into None
 
     if "Enabled" in df.columns:
         df = df[~df["Enabled"].str.lower().eq("no")]
@@ -160,7 +156,7 @@ def process_mailbox(df: pd.DataFrame, src_mbx: str, time_pred):
     if not root:
         return
     inbox = root.Folders["Inbox"]
-    items = list(inbox.Items)  # enumerate once
+    items = list(inbox.Items)  # enumerate once to avoid COM re-evaluation
 
     # Build rules
     rules = []
@@ -168,9 +164,9 @@ def process_mailbox(df: pd.DataFrame, src_mbx: str, time_pred):
         rules.append(
             {
                 "RuleName": row["RuleName"],
-                "SenderPred": build_eq_pred(row.get("SenderMatch", "")),
-                "SubjectPred": build_kw_or_regex_pred(row.get("SubjectContains", "")),
-                "CategoryPred": build_kw_or_regex_pred(row.get("Category", "")),
+                "SenderPred": build_eq_pred(row.get("SenderMatch")),
+                "SubjectPred": build_kw_or_regex_pred(row.get("SubjectContains")),
+                "CategoryPred": build_kw_or_regex_pred(row.get("Category")),
                 "Target": row["ActionMoveTo"],
             }
         )
@@ -182,13 +178,13 @@ def process_mailbox(df: pd.DataFrame, src_mbx: str, time_pred):
 
             sender_name = getattr(mail, "SenderName", "")
             subject = getattr(mail, "Subject", "")
-            cat_list = categories_of(mail)
+            current_cats = ",".join(categories_of(mail))
 
             for r in rules:
                 if (
                     r["SenderPred"](sender_name)
                     and r["SubjectPred"](subject)
-                    and r["CategoryPred"](",".join(cat_list))
+                    and r["CategoryPred"](current_cats)
                 ):
                     # Resolve destination
                     descriptor = r["Target"] or f"Archive/{r['RuleName']}"
@@ -225,9 +221,7 @@ def run(period: str, start_dt=None, end_dt=None):
 
     logging.info("=== Processing completed ===")
 
-# ────────────────────────────────────────────────────────────
-# CLI & interactive menu
-# ────────────────────────────────────────────────────────────
+# ───────────────────────────── CLI / Menu ────────────────────────────────
 def interactive_prompt():
     print("Select processing window:")
     print(" 1. Yesterday")
