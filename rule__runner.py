@@ -1,166 +1,267 @@
 """
-outlook_rule_runner.py  –  TZ-safe, multi-SenderMatch, fast date filter
+outlook_rule_runner.py
+--------------------------------------------------------------
+• SenderMatch   :  "name1;name2" (OR)  or  /regex/
+• SubjectContains: "kw1;kw2"    (OR)  or  /regex/
+• Category      :  "CatA;CatB"  (AND) or  /regex/
+• ActionMoveTo  :  <TargetMailbox>/<Folder Path>
+• Date windows  :  all | yesterday | thismonth | custom (CLI/menu)
+• Fast scan     :  Outlook Items.Restrict + skips non-MailItem
+--------------------------------------------------------------
+Dependencies:
+    pip install pandas pywin32 openpyxl
 """
 
-import argparse, logging, re, sys
+import argparse
+import logging
+import re
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
-import win32com.client as win32          # pywin32
+import win32com.client as win32  # pywin32
 
-# ───────────── CONFIG ─────────────
+# ─────────────────────────── CONFIG ───────────────────────────
 RULEBOOK_PATH = Path(__file__).with_name("Outlook_Rule_Template.xlsx")
-LOG_PATH      = Path(__file__).with_suffix(".log")
+LOG_PATH = Path(__file__).with_suffix(".log")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.FileHandler(LOG_PATH, "a", "utf-8"), logging.StreamHandler()],
 )
 
-# ───────── Outlook helpers ────────
-def ns(): return win32.Dispatch("Outlook.Application").GetNamespace("MAPI")
-def open_root(disp): 
-    try: return ns().Folders[disp]
-    except Exception: logging.error(f"Mailbox '{disp}' not found."); return None
-def ensure_folder(mbx, path):
-    root=open_root(mbx); 
-    if not root: return None
-    f=root
-    for p in re.split(r"[\\/]+", path.strip("\\/")):
-        try: f=f.Folders[p]
-        except Exception: f=f.Folders.Add(p)
-    return f
+# ───────────────────── Outlook helpers ────────────────────────
+def ns():
+    return win32.Dispatch("Outlook.Application").GetNamespace("MAPI")
+
+
+def open_root(display_name: str):
+    try:
+        return ns().Folders[display_name]
+    except Exception:
+        logging.error(f"Mailbox '{display_name}' not found in Outlook profile.")
+        return None
+
+
+def ensure_folder(mailbox: str, path: str):
+    root = open_root(mailbox)
+    if not root:
+        return None
+    folder = root
+    for part in re.split(r"[\\/]+", path.strip("\\/")):
+        try:
+            folder = folder.Folders[part]
+        except Exception:
+            folder = folder.Folders.Add(part)
+    return folder
+
+
 def categories_of(mail):
     return [c.strip().casefold() for c in (mail.Categories or "").split(",") if c]
 
-# ─────── Predicate builders ───────
-def _clean(v):
-    if v is None: return None
-    if isinstance(v,float) and pd.isna(v): return None
-    if isinstance(v,str) and v.strip()=="": return None
-    return str(v)
-def eq_pred(v):
-    v = _clean(v)
-    if v is None:
+
+# ───────────────────── Predicate builders ─────────────────────
+def _clean(value):
+    if value is None:
+        return None
+    if isinstance(value, float) and pd.isna(value):
+        return None
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    return str(value)
+
+
+def eq_pred(value):
+    """Match display name/e-mail: OR across semicolon list; supports regex."""
+    value = _clean(value)
+    if value is None:
         return lambda *_: True
 
-    # Regex still supported
-    if v.startswith("/") and v.endswith("/"):
-        pat = re.compile(v[1:-1], re.IGNORECASE)
-        return lambda s, *_: bool(pat.search(s or ""))
+    if value.startswith("/") and value.endswith("/"):
+        pattern = re.compile(value[1:-1], re.IGNORECASE)
+        return lambda s, *_: bool(pattern.search(s or ""))
 
-    # Split on semicolons instead of commas
-    targets = [t.casefold() for t in re.split(r"\s*;\s*", v) if t.strip()]
+    targets = [t.casefold() for t in re.split(r"\s*;\s*", value) if t.strip()]
     return lambda s, *_: (s or "").casefold() in targets
-def kw_regex_pred(v):
-    v=_clean(v)
-    if v is None: return lambda *_:True
-    if v.startswith("/") and v.endswith("/"):
-        pat=re.compile(v[1:-1],re.I); return lambda s,*_: bool(pat.search(s or ""))
-    kws=[k.casefold() for k in v.split(",") if k.strip()]
-    return lambda s,*_: any(k in (s or "").casefold() for k in kws)
 
-# ─────── Date helpers ─────────────
-def naive(dt): return dt.replace(tzinfo=None) if dt and getattr(dt,"tzinfo",None) else dt
-def outlook_date(dt:datetime)->str: return dt.strftime("%m/%d/%Y %I:%M %p")
-def build_time_window(period,start=None,end=None):
-    if period=="all": return None,None
-    if period=="yesterday":
-        today=datetime.now().date()
-        start=datetime.combine(today-timedelta(days=1),datetime.min.time())
-        end  =datetime.combine(today-timedelta(days=1),datetime.max.time())
-    elif period=="thismonth":
-        today=datetime.now().date()
-        start=datetime(today.year,today.month,1)
-        end=datetime.now()
-    elif period=="custom":
+
+def kw_regex_pred(value):
+    """Keyword OR logic for SubjectContains."""
+    value = _clean(value)
+    if value is None:
+        return lambda *_: True
+
+    if value.startswith("/") and value.endswith("/"):
+        pattern = re.compile(value[1:-1], re.IGNORECASE)
+        return lambda s, *_: bool(pattern.search(s or ""))
+
+    keywords = [k.casefold() for k in re.split(r"\s*;\s*", value) if k.strip()]
+    return lambda s, *_: any(k in (s or "").casefold() for k in keywords)
+
+
+def category_pred(value):
+    """AND logic for Categories (all tokens must be present)."""
+    value = _clean(value)
+    if value is None:
+        return lambda *_: True
+
+    if value.startswith("/") and value.endswith("/"):
+        pattern = re.compile(value[1:-1], re.IGNORECASE)
+        return lambda lst, *_: bool(pattern.search(",".join(lst)))
+
+    tokens = [t.casefold() for t in re.split(r"\s*;\s*", value) if t.strip()]
+    return lambda lst, *_: all(tok in lst for tok in tokens)
+
+
+# ───────────────────── Date helpers ───────────────────────────
+def naive(dt):
+    return dt.replace(tzinfo=None) if dt and getattr(dt, "tzinfo", None) else dt
+
+
+def ol_date(dt):
+    """Outlook date string for Restrict filter."""
+    return dt.strftime("%m/%d/%Y %I:%M %p")
+
+
+def build_window(period, start=None, end=None):
+    if period == "all":
+        return None, None
+
+    if period == "yesterday":
+        today = datetime.now().date()
+        start = datetime.combine(today - timedelta(days=1), datetime.min.time())
+        end = datetime.combine(today - timedelta(days=1), datetime.max.time())
+    elif period == "thismonth":
+        today = datetime.now().date()
+        start = datetime(today.year, today.month, 1)
+        end = datetime.now()
+    elif period == "custom":
         pass
-    else: raise ValueError("bad period")
-    return start,end
+    else:
+        raise ValueError("Bad period")
 
-# ───────── Load rules ─────────────
-def load_rules(xls):
-    df=pd.read_excel(xls,sheet_name="Rules").where(pd.notnull, None)
-    if "Enabled" in df: df=df[~df.Enabled.str.lower().eq("no")]
-    for col in ("Mailbox","RuleName","ActionMoveTo"):
-        if col not in df.columns: raise ValueError(f"Missing {col}")
+    return start, end
+
+
+# ───────────────────── Load rules ─────────────────────────────
+def load_rules(path: Path) -> pd.DataFrame:
+    df = pd.read_excel(path, sheet_name="Rules").where(pd.notnull, None)
+    if "Enabled" in df:
+        df = df[~df.Enabled.str.lower().eq("no")]
+    for col in ("Mailbox", "RuleName", "ActionMoveTo"):
+        if col not in df.columns:
+            raise ValueError(f"RuleBook missing column: {col}")
     return df.reset_index(drop=True)
 
-# ─── Core mailbox processing (fast) ───
-def run_mb(df, src, period,start,end):
-    root=open_root(src); inbox=root and root.Folders["Inbox"]
-    if not inbox: return
 
-    # COM-side date filter
-    if period!="all":
-        restriction = f"[ReceivedTime] >= '{outlook_date(start)}' AND [ReceivedTime] <= '{outlook_date(end)}'"
-        items=inbox.Items.Restrict(restriction)
+# ───────────────────── Mailbox runner ────────────────────────
+def run_mailbox(df: pd.DataFrame, src: str, period: str, start, end):
+    root = open_root(src)
+    inbox = root and root.Folders["Inbox"]
+    if not inbox:
+        return
+
+    # Outlook-side Restrict for speed
+    if period == "all":
+        items = inbox.Items
     else:
-        items=inbox.Items
-    # sort newest-first for speed
+        restriction = (
+            f"[ReceivedTime] >= '{ol_date(start)}' AND [ReceivedTime] <= '{ol_date(end)}'"
+        )
+        items = inbox.Items.Restrict(restriction)
+
     items.Sort("[ReceivedTime]", True)
 
-    rules=[dict(
-        Rule=row.RuleName,
-        Sender=eq_pred(row.SenderMatch),
-        Sub=kw_regex_pred(row.SubjectContains),
-        Cat=kw_regex_pred(row.Category),
-        Target=row.ActionMoveTo) for _,row in df.iterrows()]
+    rules = [
+        dict(
+            Name=row.RuleName,
+            Sender=eq_pred(row.SenderMatch),
+            Subject=kw_regex_pred(row.SubjectContains),
+            Cat=category_pred(row.Category),
+            Target=row.ActionMoveTo,
+        )
+        for _, row in df.iterrows()
+    ]
 
-    itm=items.GetFirst()
+    itm = items.GetFirst()
     while itm:
         try:
-            if itm.Class!=43:       # 43 = olMail
-                itm=items.GetNext(); continue
-            rt=getattr(itm,"ReceivedTime",None)
-            if period!="all" and not (start<=naive(rt)<=end):
-                itm=items.GetNext(); continue
+            if itm.Class != 43:  # not a MailItem
+                itm = items.GetNext()
+                continue
 
-            snd=itm.SenderName; subj=itm.Subject; cats=",".join(categories_of(itm))
+            sender = itm.SenderName
+            subject = itm.Subject
+            cats = categories_of(itm)
+
             for R in rules:
-                if R["Sender"](snd) and R["Sub"](subj) and R["Cat"](cats):
-                    dest_desc=R["Target"] or f"Archive/{R['Rule']}"
-                    parts=re.split(r"[\\/]+",dest_desc,1)
-                    tgt, path=(src,parts[0]) if len(parts)==1 else parts
-                    dest=ensure_folder(tgt,path)
+                if R["Sender"](sender) and R["Subject"](subject) and R["Cat"](cats):
+                    dest_desc = R["Target"] or f"Archive/{R['Name']}"
+                    parts = re.split(r"[\\/]+", dest_desc, 1)
+                    tgt_mbx, path = (src, parts[0]) if len(parts) == 1 else parts
+                    dest = ensure_folder(tgt_mbx, path)
                     if dest:
-                        itm.Move(dest); itm.UnRead=False
-                        logging.info(f"{src}|{R['Rule']}→{tgt}/{path}")
+                        itm.Move(dest)
+                        itm.UnRead = False
+                        logging.info(f"{src} | {R['Name']} → {tgt_mbx}/{path}")
                     break
         except Exception as e:
-            logging.error(f"Error mail in {src}: {e}")
-        itm=items.GetNext()
+            logging.error(f"Error processing mail in {src}: {e}")
+        itm = items.GetNext()
 
-# ───────── CLI / interactive ──────
-def pick():
-    m={"1":"yesterday","2":"thismonth","3":"all","4":"custom"}
-    print("1 Yesterday  2 This month  3 All  4 Custom"); c=input("> ").strip()
-    per=m.get(c,"all"); s=e=None
-    if per=="custom":
-        s=input("Start YYYY-MM-DD: "); e=input("End YYYY-MM-DD: ")
+
+# ───────────────────── CLI / Interactive ─────────────────────
+def choose():
+    mapping = {"1": "yesterday", "2": "thismonth", "3": "all", "4": "custom"}
+    print("1 Yesterday   2 This month   3 All   4 Custom")
+    choice = input("> ").strip()
+    period = mapping.get(choice, "all")
+    start = end = None
+    if period == "custom":
+        s = input("Start YYYY-MM-DD: ").strip()
+        e = input("End   YYYY-MM-DD: ").strip()
         try:
-            s=datetime.strptime(s,"%Y-%m-%d")
-            e=datetime.strptime(e,"%Y-%m-%d")+timedelta(days=1,seconds=-1)
-        except: print("Bad date, using all"); per="all"
-    return per,s,e
+            start = datetime.strptime(s, "%Y-%m-%d")
+            end = datetime.strptime(e, "%Y-%m-%d") + timedelta(days=1, seconds=-1)
+        except ValueError:
+            print("Invalid date, defaulting to All")
+            period = "all"
+    return period, start, end
+
 
 def main():
-    p=argparse.ArgumentParser(); p.add_argument("-p","--period",choices=["yesterday","thismonth","all","custom"])
-    p.add_argument("--start"); p.add_argument("--end"); a=p.parse_args()
-    if a.period:
-        per=a.period
-        if per=="custom":
-            if not (a.start and a.end): sys.exit("need --start --end")
-            s=datetime.strptime(a.start,"%Y-%m-%d"); e=datetime.strptime(a.end,"%Y-%m-%d")+timedelta(days=1,seconds=-1)
-        else: s=e=None
-    else: per,s,e=pick()
+    ap = argparse.ArgumentParser(description="Outlook Rule Runner")
+    ap.add_argument(
+        "-p", "--period", choices=["yesterday", "thismonth", "all", "custom"]
+    )
+    ap.add_argument("--start")
+    ap.add_argument("--end")
+    args = ap.parse_args()
 
-    s,e = build_time_window(per,s,e)
-    logging.info(f"=== Outlook Rule Runner period={per} ===")
-    df=load_rules(RULEBOOK_PATH)
-    for mbx,g in df.groupby("Mailbox"):
-        run_mb(g,mbx,per,s,e)
-    logging.info("=== done ===")
+    if args.period:
+        period = args.period
+        if period == "custom":
+            if not (args.start and args.end):
+                sys.exit("Custom period requires --start and --end YYYY-MM-DD")
+            start = datetime.strptime(args.start, "%Y-%m-%d")
+            end = datetime.strptime(args.end, "%Y-%m-%d") + timedelta(
+                days=1, seconds=-1
+            )
+        else:
+            start = end = None
+    else:
+        period, start, end = choose()
 
-if __name__=="__main__": main()
+    start, end = build_window(period, start, end)
+
+    logging.info(f"=== Outlook Rule Runner period={period} ===")
+    rules_df = load_rules(RULEBOOK_PATH)
+    for mbx, grp in rules_df.groupby("Mailbox"):
+        run_mailbox(grp, mbx, period, start, end)
+    logging.info("=== Processing completed ===")
+
+
+if __name__ == "__main__":
+    main()
