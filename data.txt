@@ -1,26 +1,21 @@
-Fund Name	Fund LEI	Maximum Derivative Leverage/Exposure	Allowed for Derivative Leverage?	Redemption Frequency	Notes/Sourced Regulatory/Policy Information
-AXA BVG STRATEGIEFONDS - AXA STRATEGY FUND PROFESSIONAL INVEST	549300LTQHKY361IDY58	Up to 30% of assets (Swiss BVG funds: derivatives for hedging/risk mitigation only)	No	Monthly or quarterly (Swiss pension funds)	Swiss BVG regulation; no economic leverage
-Invesco GP US IG Beta Strategy Portfolio 2023 - MG132090	549300023JPNHVUCDP57	Up to 10% of scheme assets in derivatives (hedging/EPM)	No	Quarterly (UK pensions standard)	UK pension fund regulation
-Invesco BAE Systems Pension Funds Trustees Limited	549300YIXBMMWSBVJL70	Up to 10% of assets (risk management/hedging)	No	Quarterly	UK DB scheme standard
-HBOS Final Salary Pension Scheme	X007D3E245M6JR1QPQ55	Up to 10% assets in derivatives (risk management/hedging)	No	Quarterly	UK DB pension scheme policy
-BAEK MASTERFONDS	549300S2SNQ3LOM2X064	Not permitted to use derivatives for leverage (German pensions)	No	Quarterly or scheme rules	German InvG/§212 VAG investment law
-BBC PENSION TRUST LIMITED AS TRUSTEE OF THE BBC PENSION SCHEME	549300ZT0RVWCG8T4L55	Up to 10% of scheme assets in derivatives (risk/overlay/hedging only)	No	Quarterly	UK pension policy
-SCOTTISH WIDOWS LIMITED	549300ZT0RVWCG8T4L55	Up to 10% of AUM for derivatives, hedging/ALM only	No	Quarterly/fund dependent	UK pensions & insurance regulation
-Deutsche Lauter Return UI	549300B8Q7MAZMB7FM05	Up to 100% of NAV (UCITS; for hedging/EPM, not economic leverage unless explicit)	No (unless prospectus allows, most use for hedging only)	Daily (if UCITS)	German UCITS regulatory limit
-iShares Currency Hedged MSCI EAFE ETF	549300W1V5QT6T1KPB54	Up to 100% NAV for hedging only (currency forwards)	No	Daily	SEC Rule 18f-4, ETF prospectus
-Equity Index Fund	549300QXT101PK7W1P41	Typically up to 10% of NAV for derivatives (efficient management)	No	Daily/varies (commingled)	Mutual fund/ETF typical practice
-Intermediate Term Government Bond Index Fund	5A6EWZCW66FFWEY94930	No leverage; derivatives for hedging/index replication up to 10% NAV	No	Daily	Index strategy rules
-Treasury U.S. 10 Year Key Rate Duration Non-Lendable Fund A	6RCECY4F41Z8VI6QF702	Minimal to no derivative use (US Treasuries)	No	Not on public record	Treasuries-only portfolio policy
-Treasury U.S. 15 Year Key Rate Duration Non-Lendable Fund	549300TP0C8ZXJX2RH71	Minimal to no derivative use (US Treasuries)	No	Not on public record	Treasuries-only portfolio policy
-Russell 1000 Index Fund	54930044ZDE46MDD1I13	Up to 10% of NAV in derivatives (EPM/hedging)	No	Daily	Index and mutual fund policy
-Fidelity School Street Trust - Int’l Developed Mkts Bond Index Fund	549300P0C8ZXJX2RH71	Up to 10% of NAV in derivatives (index tracking/hedging)	No	Daily	Mutual fund standard
-Fidelity Phillips Street Trust - Fidelity Government Cash Reserves	5493004AZDE46MDD1I13	Repurchase agreements for liquidity management, minimal/no derivative leverage	No	Same day (up to $1 million)	Cash equivalent/prime money market rules
-Kaiser Permanente Group Trust	HZJYWG3G72NF1FLBKF14	Limited or no derivatives, for overlays/hedging only	No	Not on public record	Collective trust policy
-Pimco Funds Private Account Portfolio Series Pimco Short Term F	LWVQWTCQFH3Y7GCVH718	Up to 100% of NAV for hedging/portfolio management, no net leverage	No	Daily	Fund prospectus, US rules
-Pimco Fd Pte Acct Pflo Series Short Term Floating Nav PfIo II	FMANY58RP93IBJ7P0179	Up to 100% for hedging, no net leverage	No	Daily	Fund prospectus
-Pimco Funds: Pimco Income Fund	XSQUHHC5X6ZAJCTU245	Up to 100% for EPM/hedging, risk managed, no net leverage	No (strict risk controls)	Daily	Prospectus, SEC Rule 18f-4
-Allianz Global Investors Europe GMBH FX Derivative FX-Equity	5493004YX8WNFH6QXF28	Potentially >100% notional (if UCITS/Derivatives MF) for hedging/EPM, not gross leverage	No (unless alternative strategy)	Daily or sub-fund rules	UCITS/derivative usage in prospectus
-Central Bank of the United Arab Emirates Fund	5493006P6IOOFH8T8150	Not publicly disclosed; no speculative derivatives	No	Not on public record	Central bank/SW sovereign fund policy
-Allianz Ald Fonds	5493009G9SRC2GZOFXN14	Up to 100% notional for hedging, not economic leverage	No	Daily/sub-fund	UCITS/prospectus policy
-Vanguard Total Stock Market Index Fund	HJZRZRJUQEVZA5SPR8Z1	Up to 10% of NAV for index replication/hedging	No	Daily	Index fund rules
-Vanguard 500 Index Fund	12WZ1W76P8QDVJ6O847	Up to 10% of NAV in derivatives for replication/hedging	No	Daily	Index fund rules
+Fund LEI	Maximum Derivative Leverage / Exposure	Allowed for Derivative Leverage?	Redemption Frequency	Key Source or Policy Notes
+LWVQWTCQFH3Y7GCVH718	Up to 100% of assets for hedging/portfolio efficiency; not for net economic leverage	No	Daily	Allowed for efficient management/hedging under standard US mutual fund/ETF and Rule 18f-4 framework.
+549300I3AUD562QV2063	Up to 50% net assets for derivatives (if SEBI-compliant MF); derivatives must not generate leverage	No	Daily	All derivatives for hedging/balancing only, fully collateralized; Indian SEBI rules apply.
+2553FRU654IGK01Y7F43	Up to 100% notional for hedging/efficiency; cannot create net leverage over portfolio NAV	No	Daily (if mutual fund/UCITS)	UCITS and mutual fund frameworks; use is for hedging/synthetic replication—gross leverage is not allowed.
+549300GE128MKIUKK458	Up to 10% (typical for equity/bond index funds) for efficient management/hedging	No	Daily	Standard mutual fund/ETF limitation under UCITS/SEC regulations.
+549300BIEY5S6BPYPB26	Up to 10% of NAV for derivatives (hedging/portfolio management only)	No	Daily	Standard for index/bond mutual funds.
+54930043W5GK0WPY7022	Limited use for hedging/risk management, no net leverage allowed	No	Daily	Standard mutual fund/UCITS rules on derivative use.
+549300VUK5G6UJ4H4896	Limited use for hedging/risk management, not leveraged	No	Daily	As above; not allowed for creating net economic leverage.
+FMANY58RP93IBJ7P0179	Up to 100% notional for hedging/efficient management; no net portfolio leverage	No	Daily	Typical of PIMCO short-term/ultra-short funds (see US SEC and prospectus standards).
+549300NQ5ESB7ZVT451B	Exposures for hedging/index replication only, no portfolio leverage	No	Daily	Standard fund/ETF/UCITS practice.
+HJZRZRJUEVFZAS5PR8E1	Up to 10% of NAV for derivatives (hedging/index tracking only)	No	Daily	Typical Vanguard index strategy policy.
+5493004Y8WFNH6GK7Z88	Up to 10% of NAV for hedging/index tracking (not leverage)	No	Daily	Standard for index funds.
+HZJWYC3G7N2TIBKFLB14	Minimal use for overlays/hedging, no gross leverage	No	Per Trust Doc	Group/pooled trust; no economic leverage, restrictions typical for institutional plans.
+54930041K04Y3ZEF0VK74	Limited to hedging/economic overlays; not for net leverage	No	Daily or per trust	May be a segregated institutional/plan fund; cannot generate gross portfolio leverage.
+549300444DE4GMDD1I13	Up to 10% NAV in derivatives for tracking/hedging, no net leverage	No	Daily	Standard for mutual/index funds.
+12WZVK7B6PD4V6JDB047	Limited to hedging/efficient management (not net leverage)	No	Daily	Regulatory and prospectus typical limit for standard index/ETF.
+549300PTCBZL2KWRHF71	Limited user: up to 10% derivatives exposure, no leverage	No	Daily	Fund likely falls under “Limited Derivatives User” exception.
+549300QXT101PK7W1P41	Up to 10% for efficient portfolio management, no leverage	No	Daily	Index/ETF standard regulation.
+5A6EW2CW6BFEV9A9430	Up to 10% (if index or bond fund), hedging only	No	Daily	Standard global bond index fund practice.
+5493009G9SRC2GZOFXN14	Up to 100% notional for hedging; no gross leverage	No	Daily or sub-fund	Typical for balanced/asset allocation or multi-asset funds; see UCITS/standard prospectus rules.
+BF5USYKM02HWX3F8G71	Minimal use, hedging collateral only	No	Daily	Cash/collateral funds; derivatives for liquidity/efficiency, not leverage.
