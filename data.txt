@@ -1,9 +1,22 @@
-Fund Name	Fund LEI	Investment Manager	Maximum Derivative Leverage / Exposure	Allowed for Derivative Leverage?	Redemption Frequency	Notes
-Pimco Funds Private Account Portfolio Series Pimco Short Term F	LWVQWTQCFH3YG7CVH718	Pacific Investment Management Co LLC	Up to 100% NAV (Commitment Approach; hedging/efficient management)	No	Daily	Only for hedging/cash management, not economic leverage; U.S. SEC Rule 18f-4, prospectus
-THE CHARLES SCHWAB FAMILY OF FUNDS – Schwab Prime Advantage Money Fund	54930034YSGPKXW97O22	Charles Schwab Investment Management Inc	Up to 100% NAV (Commitment Approach; hedging/cash management)	No	Daily	U.S. MMF/cash fund: not permitted economic leverage, SEC rules apply
-Pimco Fd Pte Acct Pflo Series Short Term Floating Nav PfIo II	FMANY58RP93IBI7PO179	Pacific Investment Management Co LLC	Up to 100% NAV (Commitment Approach; hedging/efficient management)	No	Daily	Up to NAV allowed for interest rate swaps/hedging; not for portfolio leverage
-ALLIANZ GLOBAL INVESTORS EUROPE GMBH ACTING FOR THE ACCOUNT OF ALLIANZ VGL	5493004YX8WHFNG6XF28	Allianz Global Investors Europe GmbH	Up to 100% NAV (Commitment Approach); some subfunds report gross	No	Daily/sub-fund (UCITS)	Prospectus: UCITS, so economic leverage is not permitted except for designated alternatives
-TREASURY US 10 YEAR KEY RATE DURATION NON-LENDABLE FUND A	549300TP0C8ZJXW2RH71	BlackRock Institutional Trust Company NA	Minimal/occasional overlays only; no net leverage	No	Not typically offered daily	U.S. Treasury mandate; overlays for key rate duration only, not leverage
-Russell 1000 Index Fund	5493007C24Z3ZDJ0VD06	BlackRock Institutional Trust Company NA	Up to 10% NAV (Commitment Approach; hedging/index replication)	No	Daily	Standard for passively managed index funds; no leverage allowed
-Allianz Ald Fonds	5493009GSRC2GZ0FXN14	Allianz Global Investors Europe GmbH	Up to 100% NAV (Commitment Approach/sub-fund specific)	No	Daily/sub-fund	UCITS rules; can use swaps/forwards but cannot create fund leverage
-Vanguard Total International Stock Index Fund	BF5U5YXM0ZHVXS3F8G71	Vanguard Group Inc	Up to 10% NAV (Commitment Approach; hedging/index replication)	No	Daily	U.S. index fund policy (prospectus); pure equity, derivatives for hedging/index only
+Fund LEI	Investment Manager	Fund Name	Max Derivative Leverage / Exposure	Derivative Leverage Allowed?	Redemption Frequency	Notes / Source
+549300LTQHKY361IDY58	AXA Versicherungen AG	AXA BVG STRATEGIEFONDS - AXA STRATEGY FUND PROFESSIONAL INVEST	Up to 30% of assets (Swiss pension regulation)	No	Monthly/Quarterly	Swiss BVG law - for hedging and EPM only
+549300M3QGHALQVC4X45	Blackrock (Singapore) Limited	Multi Manager Global Investment Trust - 55 Asia Pacific IG Beta Fund	Up to 100% NAV (UCITS/Commitment)	No	Daily	UCITS/Global multi-asset rules
+5493003PR41E1T0QZ97	BlackRock Advisors (UK) Limited	Blackrock Authorised Contractual Scheme: iShares Ac Asia Japan Eq Tr	Up to 100% NAV (Commitment, hedging/replication)	No	Daily	UCITS, no economic leverage
+5493005A401T6XCA514	BlackRock Advisors (UK) Limited	ISHARES III PLC - ISHARES MSCI WORLD ACC	Up to 100% NAV (Commitment, tracking/hedge)	No	Daily	UCITS ETF, index replication only
+549300DU5UNHLKOFH49	BlackRock Advisors (UK) Limited	iShares Core MSCI Europe UCITS ETF	Up to 100% NAV (Commitment, tracking/hedge)	No	Daily	UCITS ETF
+549300KXXF8WNMMRG46	BlackRock Advisors (UK) Limited	iShares MSCI ACWI UCITS ETF	Up to 100% NAV (Commitment, tracking/hedge)	No	Daily	UCITS ETF
+549300S0J58812B0FEB49	BlackRock Investment Mgmt (Australia) Ltd	BLACKROCK INDEXED HEDGED INTERNATIONAL EQUITY FUND	Up to 100% NAV (Australian managed fund policies)	No	Daily	Used for hedging, efficient portfolio management
+549300S0J58812B0FEB49	BlackRock Investment Mgmt (Australia) Ltd	AMP Wealth Management Wholesale – AMP Wholesale Global Bond Fund	Up to 100% NAV (Australian managed fund policies)	No	Daily	Derivatives for EPM/hedging only
+5493009EN0J2577WD241	Challenger Investment Solutions Mgmt	NGS Super Pty Ltd as Trustee of NGS Super	Up to 100% NAV (Australian superannuation regulation)	No	Monthly	For risk management/hedging only, per Super rules
+549300C4N8UF8J6O5W90	DFA Australia Limited	DIMENSIONAL GLOBAL CORE EQUITY TRUST	Up to 100% NAV (Aust. super/managed fund rules)	No	Monthly/Quarterly	For hedging only
+549300GATNMPOKUKU18	Fullerton Fund Management Company Ltd	HSBC Institutional Trust Services	Up to 100% NAV (Singapore/UCITS)	No	Daily	Efficient mgmt/hedging only
+549300IXBMHWVSBLVJ70	Goldman Sachs Asset Management International	BAE SYSTEMS PENSION FUNDS TRUSTEES LIMITED	Up to 10% assets (UK DB pension standards)	No	Quarterly	Only for hedging/model overlays
+549300M2PGKOC6A05O20	Insight Investment Management (Global) Limited	Scottish & Newcastle Pension Plan	Up to 10% NAV (UK pension trust standards)	No	Quarterly	Overlays/hedging only, no gross leverage
+5493008DBZZYF8LZB5AW	Legal & General Investment Mgmt Ltd	BBC PENSION TRUST LIMITED	Up to 10% NAV (UK DB pension policies)	No	Quarterly	For ALM/hedging/efficient management
+549300C8NPKD8C5F5B33	Perpetual Investment Management Limited	PERPETUAL DIVERSIFIED REAL RETURN FUND	Up to 100% NAV (Australia multi-asset/UCITS)	No	Daily	Efficient Mgmt/hedging/absolute return (no leverage)
+213800ZQZ5LXUWKB5F53	QIC Limited	CareSuper Pty Ltd as Trustee for CareSuper	Up to 100% NAV (Aust. super rules)	No	Monthly/Quarterly	For hedging, risk management only
+54930018IXT1QM59EZ55	Schroder Investment Management (Hong Kong) Ltd	Schroder Umbrella Fund II - Schroder Asian Asset Income Fund	Up to 100% NAV (UCITS/commitment)	No	Daily	Hedging/EPM/asset access, not net leverage
+549300J8XIYKF0Y5B53	Sompo Asset Management Co., Ltd.	SCOTTISH WIDOWS LIMITED	Up to 10% (UK insurance/DB rules)	No	Quarterly	Hedging/ALM only
+2138006XCDJA1W5QSI42	State Street Global Advisors (Japan) Co Ltd	The Nomura Trust and Banking Co Ltd., /045137036	Up to 100% NAV (Japan Trust regulation/UCITS)	No	Daily	For hedging/EPM only
+2138008DBZZYF8LZB5AW	State Street Global Advisors Australia Limited	State Street Pty Ltd as Trustee for Aware Super	Up to 100% NAV (Aust. super rules)	No	Monthly/Quarterly	Risk management overlays only
+549300B8Q7MAZMB7FM05	Universal-Investment-Gesellschaft mbH	Lauter Return UI	Up to 100% NAV (German UCITS/Commitment)	No	Daily/Monthly	Hedging/efficient management, no portfolio leverage
