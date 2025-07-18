@@ -1,22 +1,9 @@
-Fund/Entity Name	Fund LEI	Investment Manager	Maximum Derivative Leverage / Exposure	Allowed for Derivative Leverage?	Redemption Frequency	Key Notes/Source
-PIMCO Funds Private Account Portfolio Series, Pimco Short Term F	LWVQWTCQFH3Y7GCVH718	Pacific Investment Management Co LLC	Up to 100% NAV (Commitment Approach)	No	Daily	Used for hedging, not net leverage
-Fidelity Phillips Street Trust - Fidelity Government Cash Reserves	549300I3AUDS62CV2063	Fidelity Management & Research Co LLC	Up to 100% NAV, hedging/synthetic only	No	Daily	U.S. money market rules/prospectus
-BlackRock Institutional Trust Co NA: Cash Equivalent Fund II	2SS3FRUC54JGK01YF743	BlackRock Institutional Trust Co NA	Up to 100% NAV, hedging/synthetic only	No	Daily	U.S. cash/money market fund rules
-State Street Master Funds: US Govt Money Market Portfolio	549300EG2J8MKJKUK458	SSgA Funds Management Inc	Up to 100% NAV for EPM, not leveraged	No	Daily	Commitment approach; no net leverage
-Morgan Stanley Institutional Liquidity Funds Government Portfolio	549300BI6Y5SI6BYPB26	Morgan Stanley Investment Management Inc	Up to 100% NAV for cash management	No	Daily	Money market policy: only for hedging
-Charles Schwab Prime Advantage Money Fund	54930034YSGPKXW97022	Charles Schwab Investment Management Inc	Up to 100% NAV for hedging, not leverage	No	Daily	SEC/US MMF regulation
-Fidelity Hereford Street Trust: Gov Money Market Fund	549300VZUKS6UD4H4866	Fidelity Management & Research Co LLC	Up to 100% NAV for hedging, not leverage	No	Daily	U.S. MMF/prime policy
-Pimco Fd Pte Acct Pflo Short Term Floating NAV II	FMANY58RP93IBJ7P0179	Pacific Investment Management Co LLC	Up to 100% NAV (Commitment Approach)	No	Daily	Only for hedging/efficiency
-JP Morgan US Government Money Market Fund	549300NQ5E5B7ZV4T516	JP Morgan Investment Management Inc (NY)	Up to 100% NAV for hedging, not leverage	No	Daily	U.S. MMF regulation
-Vanguard Total Stock Market Index Fund	HJ2RZRUQEVF2A5SPRB21	Vanguard Group Inc	Up to 10% NAV for hedging/synthetic	No	Daily	Index fund/ETF policy
-Allianz Global Investors Europe (Fund: acting for ALLIANZ VGL)	5493004YX8WNFH6QXF28	Allianz Global Investors Europe GmbH	Up to 100% (Commitment Approach); no leverage	No	Daily/sub-fund	UCITS/Commitment approach
-Pacific Investment Management Co LLC (Kaiser Permanente Group Trust)	HZJYWC3G72NF1FLBKF14	Pacific Investment Management Co LLC	Minimal (hedging overlay only)	No	Per Trust Doc	Collective investment trust
-BlackRock Liquidity Funds Fedfund	549300T8K043VZEOVK74	BlackRock Advisors LLC	Up to 100% NAV, hedging only	No	Daily	U.S. MMF policy
-Fidelity School Street Trust - International Developed Markets Bond Index Fund	54930044ZDE46MDDII13	Fidelity Management & Research Co LLC	Up to 100% NAV for hedging, not leverage	No	Daily	Index bond fund regulations
-Vanguard 500 Index Fund	12WZ1W76P8QD4VJ6OB47	Vanguard Group Inc	Up to 10% NAV for hedging/replication	No	Daily	Standard index/ETF policy
-BlackRock Institutional Trust Co NA: Equity Index Fund	549300QXT101PK7W1P41	BlackRock Institutional Trust Co NA	Up to 10% NAV, hedging/replication only	No	Daily	Index/ETF EPM rule
-BlackRock Institutional Trust: Treasury US 15 Year Key Rate Duration NL Fund	549300TPOC8ZJXW2RH71	BlackRock Institutional Trust Co NA	Minimal, only for overlays (not leverage)	No	Not on Record	Treasuries-only overlay
-BlackRock Institutional Trust: Russell 1000 Index Fund	5493007C24Z3ZDJOVD06	BlackRock Institutional Trust Co NA	Up to 10% NAV for hedging/replication	No	Daily	Index/ETF rule
-BlackRock Institutional Trust: Intermediate Term Govt Bond Index Fund	5A6EWZCW66FFWEY94930	BlackRock Institutional Trust Co NA	Up to 10% NAV, hedging only	No	Daily	Bond index policy
-Pacific Investment Management Co LLC: Treasury US 10yr KRD NL Fund	5493009GSRC2GZOFXN14	Pacific Investment Management Co LLC	Minimal, overlays only (not leverage)	No	Not on Record	Treasuries policy
-Vanguard Group Inc: Total International Stock Index Fund	BF5U5YXMOZHVXS3F8G71	Vanguard Group Inc	Up to 10% NAV, hedging/index only	No	Daily	Index fund/ETF rules
+Fund Name	Fund LEI	Investment Manager	Maximum Derivative Leverage / Exposure	Allowed for Derivative Leverage?	Redemption Frequency	Notes
+Pimco Funds Private Account Portfolio Series Pimco Short Term F	LWVQWTQCFH3YG7CVH718	Pacific Investment Management Co LLC	Up to 100% NAV (Commitment Approach; hedging/efficient management)	No	Daily	Only for hedging/cash management, not economic leverage; U.S. SEC Rule 18f-4, prospectus
+THE CHARLES SCHWAB FAMILY OF FUNDS – Schwab Prime Advantage Money Fund	54930034YSGPKXW97O22	Charles Schwab Investment Management Inc	Up to 100% NAV (Commitment Approach; hedging/cash management)	No	Daily	U.S. MMF/cash fund: not permitted economic leverage, SEC rules apply
+Pimco Fd Pte Acct Pflo Series Short Term Floating Nav PfIo II	FMANY58RP93IBI7PO179	Pacific Investment Management Co LLC	Up to 100% NAV (Commitment Approach; hedging/efficient management)	No	Daily	Up to NAV allowed for interest rate swaps/hedging; not for portfolio leverage
+ALLIANZ GLOBAL INVESTORS EUROPE GMBH ACTING FOR THE ACCOUNT OF ALLIANZ VGL	5493004YX8WHFNG6XF28	Allianz Global Investors Europe GmbH	Up to 100% NAV (Commitment Approach); some subfunds report gross	No	Daily/sub-fund (UCITS)	Prospectus: UCITS, so economic leverage is not permitted except for designated alternatives
+TREASURY US 10 YEAR KEY RATE DURATION NON-LENDABLE FUND A	549300TP0C8ZJXW2RH71	BlackRock Institutional Trust Company NA	Minimal/occasional overlays only; no net leverage	No	Not typically offered daily	U.S. Treasury mandate; overlays for key rate duration only, not leverage
+Russell 1000 Index Fund	5493007C24Z3ZDJ0VD06	BlackRock Institutional Trust Company NA	Up to 10% NAV (Commitment Approach; hedging/index replication)	No	Daily	Standard for passively managed index funds; no leverage allowed
+Allianz Ald Fonds	5493009GSRC2GZ0FXN14	Allianz Global Investors Europe GmbH	Up to 100% NAV (Commitment Approach/sub-fund specific)	No	Daily/sub-fund	UCITS rules; can use swaps/forwards but cannot create fund leverage
+Vanguard Total International Stock Index Fund	BF5U5YXM0ZHVXS3F8G71	Vanguard Group Inc	Up to 10% NAV (Commitment Approach; hedging/index replication)	No	Daily	U.S. index fund policy (prospectus); pure equity, derivatives for hedging/index only
