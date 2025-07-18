@@ -1,21 +1,22 @@
-Fund LEI	Maximum Derivative Leverage / Exposure	Allowed for Derivative Leverage?	Redemption Frequency	Key Source or Policy Notes
-LWVQWTCQFH3Y7GCVH718	Up to 100% of assets for hedging/portfolio efficiency; not for net economic leverage	No	Daily	Allowed for efficient management/hedging under standard US mutual fund/ETF and Rule 18f-4 framework.
-549300I3AUD562QV2063	Up to 50% net assets for derivatives (if SEBI-compliant MF); derivatives must not generate leverage	No	Daily	All derivatives for hedging/balancing only, fully collateralized; Indian SEBI rules apply.
-2553FRU654IGK01Y7F43	Up to 100% notional for hedging/efficiency; cannot create net leverage over portfolio NAV	No	Daily (if mutual fund/UCITS)	UCITS and mutual fund frameworks; use is for hedging/synthetic replication—gross leverage is not allowed.
-549300GE128MKIUKK458	Up to 10% (typical for equity/bond index funds) for efficient management/hedging	No	Daily	Standard mutual fund/ETF limitation under UCITS/SEC regulations.
-549300BIEY5S6BPYPB26	Up to 10% of NAV for derivatives (hedging/portfolio management only)	No	Daily	Standard for index/bond mutual funds.
-54930043W5GK0WPY7022	Limited use for hedging/risk management, no net leverage allowed	No	Daily	Standard mutual fund/UCITS rules on derivative use.
-549300VUK5G6UJ4H4896	Limited use for hedging/risk management, not leveraged	No	Daily	As above; not allowed for creating net economic leverage.
-FMANY58RP93IBJ7P0179	Up to 100% notional for hedging/efficient management; no net portfolio leverage	No	Daily	Typical of PIMCO short-term/ultra-short funds (see US SEC and prospectus standards).
-549300NQ5ESB7ZVT451B	Exposures for hedging/index replication only, no portfolio leverage	No	Daily	Standard fund/ETF/UCITS practice.
-HJZRZRJUEVFZAS5PR8E1	Up to 10% of NAV for derivatives (hedging/index tracking only)	No	Daily	Typical Vanguard index strategy policy.
-5493004Y8WFNH6GK7Z88	Up to 10% of NAV for hedging/index tracking (not leverage)	No	Daily	Standard for index funds.
-HZJWYC3G7N2TIBKFLB14	Minimal use for overlays/hedging, no gross leverage	No	Per Trust Doc	Group/pooled trust; no economic leverage, restrictions typical for institutional plans.
-54930041K04Y3ZEF0VK74	Limited to hedging/economic overlays; not for net leverage	No	Daily or per trust	May be a segregated institutional/plan fund; cannot generate gross portfolio leverage.
-549300444DE4GMDD1I13	Up to 10% NAV in derivatives for tracking/hedging, no net leverage	No	Daily	Standard for mutual/index funds.
-12WZVK7B6PD4V6JDB047	Limited to hedging/efficient management (not net leverage)	No	Daily	Regulatory and prospectus typical limit for standard index/ETF.
-549300PTCBZL2KWRHF71	Limited user: up to 10% derivatives exposure, no leverage	No	Daily	Fund likely falls under “Limited Derivatives User” exception.
-549300QXT101PK7W1P41	Up to 10% for efficient portfolio management, no leverage	No	Daily	Index/ETF standard regulation.
-5A6EW2CW6BFEV9A9430	Up to 10% (if index or bond fund), hedging only	No	Daily	Standard global bond index fund practice.
-5493009G9SRC2GZOFXN14	Up to 100% notional for hedging; no gross leverage	No	Daily or sub-fund	Typical for balanced/asset allocation or multi-asset funds; see UCITS/standard prospectus rules.
-BF5USYKM02HWX3F8G71	Minimal use, hedging collateral only	No	Daily	Cash/collateral funds; derivatives for liquidity/efficiency, not leverage.
+Fund/Entity Name	Fund LEI	Leverage Calculation Method	Maximum Leverage Percentage	Notes / Regulatory Source
+PIMCO Funds Private Account Portfolio Series Short Term	LWVQWTQCFH3YG7CVH718	Commitment Approach (UCITS/Sec Regs)	100% of NAV	Notional exposure ≤ 100% NAV; only for hedging
+Kotak Standard Multi Cap Fund	549300I3AUDS62CV2063	Commitment Approach (SEBI, India)	50% of net assets	Applies to derivatives for hedging only; not leverage
+Mirae Asset Nifty 50 ETF	2SS3FRUC54JGK01YF743	Commitment Approach (SEBI, UCITS)	100% of NAV	Notional exposure capped under Indian/UCITS rules
+iShares S&P 500 Index Fund	549300EG2J8MKJKUK458	Commitment Approach (SEC/UCITS)	100% of NAV	Standard ETF: total derivative exposure ≤ 100% NAV
+iShares Government Bond Index	549300BI6Y5SI6BYPB26	Commitment Approach	100% of NAV	Index mutual funds follow global exposure rules
+S&P Short-Term Government Index Fund	54930034YSGPKXW97022	Commitment Approach	100% of NAV	UCITS/SEC compliance: total net derivative exposure
+AB Global Bond Fund	549300VZUKS6UD4H4866	Commitment Approach (UCITS)	100% of NAV	UCITS rules: net exposure, hedging excluded from gross
+PIMCO Short-Term Floating NAV Portfolio	FMANY55RP93IBI7PO179	Commitment Approach	100% of NAV	Total derivatives not to exceed NAV; hedging allowed
+Axis Banking & PSU Debt Fund	549300NQ5E5B7ZV4T516	Commitment Approach (SEBI)	50% of net assets	Indian mutual funds cap derivatives at 50% of net assets
+Vanguard Total Stock Market Index Fund	HJ2RZRUQEVF2A5SPRB21	Commitment Approach (SEC/UCITS)	100% of NAV	Index fund reporting, net of hedge/netting
+Allianz Global Investors Europe FX Derivative	493004X8WHFNG6XF28	Gross and Commitment Approach	200% (Gross) / 100% (Commitment)	AIFMD/UCITS, per fund disclosure: gross is sum absolute, commitment nets hedges
+Kaiser Permanente Group Trust	HZJYWC3G72NF1FLBKF14	Commitment Approach	100% of NAV	Trust/plan funds follow regulated net exposure
+PineBridge U.S. Investment Grade Credit Fund	549300T8K043VZEOVK74	Commitment Approach	100% of NAV	Fund/UCITS standard
+Russell 1000 Index Fund	54930044ZDE46MDDII13	Commitment Approach	100% of NAV	Mut. fund/ETF: only for synthetic index exposure, not leverage
+Vanguard 500 Index Fund	12WZ1W76P8QD4VJ6OB47	Commitment Approach	100% of NAV	Standard ETF policy: hedging/replication only
+Equity Index Fund	549300QXT101PK7W1P41	Commitment Approach	100% of NAV	MSCI/Efficient Portfolio Management under regulatory limits
+Treasury U.S. 15 Year Key Rate Duration NL Fund	549300TPOC8ZJXW2RH71	Commitment Approach	100% of NAV	Overlay derivatives, only for interest rate risk hedging
+Axis Short Duration Fund	5493007C24Z3ZDJOVD06	Commitment Approach (SEBI)	50% of net assets	No net leverage; all positions for risk management
+Intermediate Term Government Bond Index Fund	5A6EWZCW66FFWEY94930	Commitment Approach	100% of NAV	Regulatory limit under mutual fund rules
+Allianz Ald Fonds	5493009GSRC2GZOFXN14	Gross and Commitment Approach	200% (Gross) / 100% (Commitment)	UCITS multi-asset: gross includes all exposures, commitment nets hedges
+BlackRock Liquidity Funds	BF5U5YXMOZHVXS3F8G71	Commitment Approach	100% of NAV	Derivatives for liquidity/hedging, not economic leverage
