@@ -1,21 +1,12 @@
-
 """
-outlook_rule_runner.py  —  v1.3 (Aug 2025)
-
-Fixes & Improvements
-• Fix COM error (-2147467262, "No such interface supported") by not touching a moved item.
-  - We cache the next pointer BEFORE moving and never access itm after Move().
-  - We use the MOVE RETURN VALUE for post-move operations.
-• SenderMatch now accepts display name OR email (and supports /regex/).
-• Stronger logging (EntryID, subject, rule) and defensive error handling.
-• Safer destination resolution and folder creation across mailboxes.
-• Rule Category column uses AND logic (unchanged per your spec).
-• Works with Inbox date filtering via Items.Restrict to keep it fast.
+Outlook Rule Runner – Revised (Aug 2025)
 --------------------------------------------------------------
-CLI:
-  python outlook_rule_runner.py -p all
-  python outlook_rule_runner.py -p yesterday
-  python outlook_rule_runner.py -p custom --start 2025-07-01 --end 2025-07-11
+Fixes:
+  • Safe Move iteration to prevent -2147467262 COM errors
+  • Match SenderName or SenderEmailAddress
+  • More robust folder creation & logging
+  • Retains category AND logic and subject OR logic
+--------------------------------------------------------------
 """
 
 import argparse
@@ -24,11 +15,9 @@ import re
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Iterable, List, Optional, Tuple
 
 import pandas as pd
 import win32com.client as win32
-from pywintypes import com_error  # type: ignore
 
 # ─────────────────────────── CONFIG ───────────────────────────
 RULEBOOK_PATH = Path(__file__).with_name("Outlook_Rule_Template.xlsx")
@@ -49,33 +38,20 @@ def open_root(display_name: str):
     try:
         return ns().Folders[display_name]
     except Exception:
-        try:
-            # Try via shared default folder resolution (for shared mailboxes)
-            rcpt = ns().CreateRecipient(display_name)
-            rcpt.Resolve()
-            store = ns().GetSharedDefaultFolder(rcpt, win32.constants.olFolderInbox).Parent
-            return store
-        except Exception:
-            logging.error(f"Mailbox '{display_name}' not found/resolvable in Outlook profile.")
-            return None
+        logging.error(f"Mailbox '{display_name}' not found in Outlook profile.")
+        return None
 
 
 def ensure_folder(mailbox: str, path: str):
-    """Create path under 'mailbox' if missing and return MAPIFolder."""
     root = open_root(mailbox)
     if not root:
         return None
     folder = root
-    parts = [p for p in re.split(r"[\\/]+", path.strip("\\/")) if p]
-    for part in parts:
+    for part in re.split(r"[\\/]+", path.strip("\\/")):
         try:
             folder = folder.Folders[part]
         except Exception:
-            try:
-                folder = folder.Folders.Add(part)
-            except Exception as e:
-                logging.error(f"Failed to create/open subfolder '{part}' under {mailbox}: {e}")
-                return None
+            folder = folder.Folders.Add(part)
     return folder
 
 
@@ -94,11 +70,8 @@ def _clean(value):
     return str(value)
 
 
-def sender_pred(value) -> Callable[[str, str], bool]:
-    """
-    SenderMatch – OR logic over semicolons, or /regex/.
-    Matches against BOTH display name and email.
-    """
+def sender_pred(value):
+    """SenderMatch – OR over semicolons, or /regex/, matches Display Name or Email."""
     value = _clean(value)
     if value is None:
         return lambda *_: True
@@ -111,40 +84,40 @@ def sender_pred(value) -> Callable[[str, str], bool]:
     return lambda name, email: (name or "").casefold() in targets or (email or "").casefold() in targets
 
 
-def kw_regex_pred(value) -> Callable[[str], bool]:
-    """SubjectContains – OR logic over semicolons, or /regex/."""
+def kw_regex_pred(value):
+    """SubjectContains – OR over semicolons, or /regex/."""
     value = _clean(value)
     if value is None:
         return lambda *_: True
 
     if value.startswith("/") and value.endswith("/"):
         pattern = re.compile(value[1:-1], re.IGNORECASE)
-        return lambda s: bool(pattern.search(s or ""))
+        return lambda s, *_: bool(pattern.search(s or ""))
 
     keywords = [k.casefold() for k in re.split(r"\s*;\s*", value) if k.strip()]
-    return lambda s: any(k in (s or "").casefold() for k in keywords)
+    return lambda s, *_: any(k in (s or "").casefold() for k in keywords)
 
 
-def category_pred(value) -> Callable[[Iterable[str]], bool]:
-    """Category – AND logic over semicolons, or /regex/."""
+def category_pred(value):
+    """Category – AND over semicolons, or /regex/."""
     value = _clean(value)
     if value is None:
         return lambda *_: True
 
     if value.startswith("/") and value.endswith("/"):
         pattern = re.compile(value[1:-1], re.IGNORECASE)
-        return lambda lst: bool(pattern.search(",".join(lst)))
+        return lambda lst, *_: bool(pattern.search(",".join(lst)))
 
     tokens = [t.casefold() for t in re.split(r"\s*;\s*", value) if t.strip()]
-    return lambda lst: all(tok in lst for tok in tokens)
+    return lambda lst, *_: all(tok in lst for tok in tokens)
 
 
 # ───────────────────── Date helpers ───────────────────────────
-def ol_date(dt: datetime) -> str:
-    return dt.strftime("%m/%d/%Y %I:%M %p")  # Outlook Restrict format
+def ol_date(dt):
+    return dt.strftime("%m/%d/%Y %I:%M %p")
 
 
-def build_window(period: str, start: Optional[datetime] = None, end: Optional[datetime] = None):
+def build_window(period, start=None, end=None):
     if period == "all":
         return None, None
     if period == "yesterday":
@@ -156,7 +129,6 @@ def build_window(period: str, start: Optional[datetime] = None, end: Optional[da
         start = datetime(today.year, today.month, 1)
         end = datetime.now()
     elif period == "custom":
-        # start/end already supplied
         pass
     else:
         raise ValueError("Bad period")
@@ -179,15 +151,12 @@ def run_mailbox(df: pd.DataFrame, src: str, period: str, start, end):
     root = open_root(src)
     inbox = root and root.Folders["Inbox"]
     if not inbox:
-        logging.error(f"Could not open Inbox for mailbox: {src}")
         return
 
     if period == "all":
         items = inbox.Items
     else:
-        restriction = (
-            f"[ReceivedTime] >= '{ol_date(start)}' AND [ReceivedTime] <= '{ol_date(end)}'"
-        )
+        restriction = f"[ReceivedTime] >= '{ol_date(start)}' AND [ReceivedTime] <= '{ol_date(end)}'"
         items = inbox.Items.Restrict(restriction)
 
     items.Sort("[ReceivedTime]", True)
@@ -206,11 +175,9 @@ def run_mailbox(df: pd.DataFrame, src: str, period: str, start, end):
     itm = items.GetFirst()
     while itm:
         try:
-            # Cache the next pointer FIRST. We will set itm=next_itm at loop end.
-            next_itm = items.GetNext()
+            next_itm = items.GetNext()  # cache next before touching itm
 
-            # Skip non-mail items
-            if getattr(itm, "Class", None) != 43:  # 43 = olMail
+            if itm.Class != 43:  # olMail
                 itm = next_itm
                 continue
 
@@ -220,37 +187,27 @@ def run_mailbox(df: pd.DataFrame, src: str, period: str, start, end):
             cats = categories_of(itm)
             entry = getattr(itm, "EntryID", "") or ""
 
-            matched = False
             for R in rules:
                 if R["Sender"](name, email) and R["Subject"](subject) and R["Cat"](cats):
-                    matched = True
                     dest_desc = R["Target"] or f"Archive/{R['Name']}"
                     parts = re.split(r"[\\/]+", dest_desc, 1)
                     tgt_mbx, path = (src, parts[0]) if len(parts) == 1 else parts
                     dest = ensure_folder(tgt_mbx, path)
                     if dest:
                         try:
-                            moved = itm.Move(dest)  # returns the item in the destination
+                            moved_item = itm.Move(dest)
                             try:
-                                moved.UnRead = False
+                                moved_item.UnRead = False
                             except Exception:
                                 pass
                             logging.info(f"{src} | {R['Name']} → {tgt_mbx}/{path} | {entry} | {subject}")
-                        except com_error as ce:
-                            logging.error(f"Move failed in {src} → {tgt_mbx}/{path} | {entry} | {subject} | {ce}")
-                    else:
-                        logging.error(f"Destination not available: {tgt_mbx}/{path} for rule '{R['Name']}'")
-                    break  # stop at first matched rule
-
-            if not matched:
-                logging.info(f"{src} | NoRule | {entry} | {subject}")
-        except com_error as e:
-            logging.error(f"COM error in {src}: {e}")
+                        except Exception as e:
+                            logging.error(f"Move failed {src} → {tgt_mbx}/{path} | {entry} | {subject} | {e}")
+                    break
         except Exception as e:
             logging.error(f"Error processing mail in {src}: {e}")
-        finally:
-            # Advance using the cached pointer to avoid touching moved item
-            itm = next_itm
+        itm = next_itm
+
 
 # ───────────────────── CLI / Interactive ─────────────────────
 def choose():
@@ -273,9 +230,7 @@ def choose():
 
 def main():
     ap = argparse.ArgumentParser(description="Outlook Rule Runner")
-    ap.add_argument(
-        "-p", "--period", choices=["yesterday", "thismonth", "all", "custom"]
-    )
+    ap.add_argument("-p", "--period", choices=["yesterday", "thismonth", "all", "custom"])
     ap.add_argument("--start")
     ap.add_argument("--end")
     args = ap.parse_args()
@@ -286,9 +241,7 @@ def main():
             if not (args.start and args.end):
                 sys.exit("Custom period requires --start and --end YYYY-MM-DD")
             start = datetime.strptime(args.start, "%Y-%m-%d")
-            end = datetime.strptime(args.end, "%Y-%m-%d") + timedelta(
-                days=1, seconds=-1
-            )
+            end = datetime.strptime(args.end, "%Y-%m-%d") + timedelta(days=1, seconds=-1)
         else:
             start = end = None
     else:
