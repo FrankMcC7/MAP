@@ -1,12 +1,13 @@
 Option Explicit
 
 '==========================================================
-' NewFundsIdentificationMacro (updated for TRANSPARENCY col)
+' NewFundsIdentificationMacro (updated + robust guards)
 ' ---------------------------------------------------------
-' • Inactive = Fund exists in SharePoint but NOT in HFTable.
-' • “Tier” values come from HFTable column: TRANSPARENCY (1/2/3).
-' • Filters use: IRR_last_update_date >= 01/01/2023 and TRANSPARENCY IN {1,2},
-'   plus Strategy/Entity exclusion filters (unchanged).
+' • Uses TRANSPARENCY column (values 1/2/3); filters keep {1,2}.
+' • Inactive = fund present in SharePoint but NOT in HFTable (ALL HF rows).
+' • InactiveHF.Tier is back-filled from HFTable.TRANSPARENCY after table build.
+' • Added defensive checks to prevent Error 1004 when a column is missing
+'   or the table has no data rows.
 '==========================================================
 
 '=======================
@@ -47,9 +48,10 @@ Function EnsureTableRange(ws As Worksheet, tblName As String, rng As Range) As L
 End Function
 
 Function GetColumnIndex(lo As ListObject, headerName As String) As Long
-    Dim i As Long
+    Dim i As Long, hdr As String
     For i = 1 To lo.HeaderRowRange.Columns.Count
-        If Trim(lo.HeaderRowRange.Cells(1, i).Value) = headerName Then
+        hdr = Trim(CStr(lo.HeaderRowRange.Cells(1, i).Value))
+        If StrComp(hdr, Trim(CStr(headerName)), vbTextCompare) = 0 Then
             GetColumnIndex = i
             Exit Function
         End If
@@ -60,7 +62,7 @@ End Function
 Function ColumnExists(lo As ListObject, colName As String) As Boolean
     Dim cl As ListColumn
     For Each cl In lo.ListColumns
-        If Trim(cl.Name) = colName Then ColumnExists = True: Exit Function
+        If StrComp(Trim(cl.Name), Trim(colName), vbTextCompare) = 0 Then ColumnExists = True: Exit Function
     Next cl
     ColumnExists = False
 End Function
@@ -81,13 +83,9 @@ Function GetAllowedValues(lo As ListObject, fieldName As String, excludeArr As V
         valStr = Trim(CStr(cell.Value))
         skipVal = False
         For i = LBound(excludeArr) To UBound(excludeArr)
-            If StrComp(valStr, Trim(CStr(excludeArr(i))), vbTextCompare) = 0 Then
-                skipVal = True: Exit For
-            End If
+            If StrComp(valStr, Trim(CStr(excludeArr(i))), vbTextCompare) = 0 Then skipVal = True: Exit For
         Next i
-        If Not skipVal Then
-            If Not dict.Exists(valStr) Then dict.Add valStr, valStr
-        End If
+        If Not skipVal Then If Not dict.Exists(valStr) Then dict.Add valStr, valStr
     Next cell
 
     If dict.Count > 0 Then GetAllowedValues = dict.Keys Else GetAllowedValues = Array()
@@ -208,28 +206,30 @@ Sub NewFundsIdentificationMacro()
     '=======================
     ' BUILD dictHF (ALL HF rows, independent of filters)
     '=======================
-    hfFundIDCol = GetColumnIndex(loMainHF, "HFAD_Fund_CoperID")
-    If hfFundIDCol > 0 Then
-        For rIdx = 1 To loMainHF.DataBodyRange.Rows.Count
-            key = Trim(CStr(loMainHF.DataBodyRange.Cells(rIdx, hfFundIDCol).Value))
-            If Len(key) > 0 Then dictHF(key) = True
-        Next rIdx
+    If loMainHF.DataBodyRange Is Nothing Then
+        MsgBox "HFTable has no data rows.", vbCritical: Exit Sub
     End If
 
+    hfFundIDCol = GetColumnIndex(loMainHF, "HFAD_Fund_CoperID")
+    If hfFundIDCol = 0 Then
+        MsgBox "Column 'HFAD_Fund_CoperID' not found in HFTable.", vbCritical: Exit Sub
+    End If
+
+    For rIdx = 1 To loMainHF.DataBodyRange.Rows.Count
+        key = Trim(CStr(loMainHF.DataBodyRange.Cells(rIdx, hfFundIDCol).Value))
+        If Len(key) > 0 Then dictHF(key) = True
+    Next rIdx
+
     '=======================
-    ' FILTER HFTable (Date + Tier + Strategy/Entity)
+    ' FILTER HFTable (Date + TRANSPARENCY 1/2 + Strategy/Entity)
     '=======================
     If loMainHF.AutoFilter.FilterMode Then loMainHF.AutoFilter.ShowAllData
 
     colIndex = GetColumnIndex(loMainHF, "IRR_last_update_date")
-    If colIndex > 0 Then
-        loMainHF.Range.AutoFilter Field:=colIndex, Criteria1:=">=01/01/2023", Operator:=xlFilterValues
-    End If
+    If colIndex > 0 Then loMainHF.Range.AutoFilter Field:=colIndex, Criteria1:=">=01/01/2023", Operator:=xlFilterValues
 
     colIndex = GetColumnIndex(loMainHF, "TRANSPARENCY")
-    If colIndex > 0 Then
-        loMainHF.Range.AutoFilter Field:=colIndex, Criteria1:=Array("1", "2"), Operator:=xlFilterValues
-    End If
+    If colIndex > 0 Then loMainHF.Range.AutoFilter Field:=colIndex, Criteria1:=Array("1", "2"), Operator:=xlFilterValues
 
     ApplyStrategyFilter loMainHF
     ApplyEntityFilter  loMainHF
@@ -237,7 +237,15 @@ Sub NewFundsIdentificationMacro()
     '=======================
     ' BUILD dictSP (existing funds in SharePoint)
     '=======================
+    If loMainSP.DataBodyRange Is Nothing Then
+        MsgBox "SharePoint table has no data rows.", vbCritical: Exit Sub
+    End If
+
     colIndex = GetColumnIndex(loMainSP, "HFAD_Fund_CoperID")
+    If colIndex = 0 Then
+        MsgBox "Column 'HFAD_Fund_CoperID' not found in SharePoint table.", vbCritical: Exit Sub
+    End If
+
     For i = 1 To loMainSP.DataBodyRange.Rows.Count
         key = Trim(CStr(loMainSP.DataBodyRange.Cells(i, colIndex).Value))
         If Len(key) > 0 Then dictSP(key) = True
@@ -247,12 +255,14 @@ Sub NewFundsIdentificationMacro()
     ' BUILD tierDict (from FILTERED HF rows) using TRANSPARENCY
     '=======================
     idxTier = GetColumnIndex(loMainHF, "TRANSPARENCY")
+    If idxTier = 0 Then
+        MsgBox "Column 'TRANSPARENCY' not found in HFTable.", vbCritical: Exit Sub
+    End If
+
     For rIdx = 1 To loMainHF.DataBodyRange.Rows.Count
         If Not loMainHF.DataBodyRange.Rows(rIdx).Hidden Then
             key = Trim(CStr(loMainHF.DataBodyRange.Cells(rIdx, hfFundIDCol).Value))
-            If Len(key) > 0 Then
-                If Not tierDict.Exists(key) Then tierDict(key) = loMainHF.DataBodyRange.Cells(rIdx, idxTier).Value
-            End If
+            If Len(key) > 0 Then If Not tierDict.Exists(key) Then tierDict(key) = loMainHF.DataBodyRange.Cells(rIdx, idxTier).Value
         End If
     Next rIdx
 
@@ -265,10 +275,7 @@ Sub NewFundsIdentificationMacro()
     idxIMName  = GetColumnIndex(loMainHF, "HFAD_IM_Name")
     idxCred    = GetColumnIndex(loMainHF, "HFAD_Credit_Officer")
 
-    On Error Resume Next
-    Set visData = loMainHF.DataBodyRange.SpecialCells(xlCellTypeVisible)
-    On Error GoTo 0
-
+    On Error Resume Next: Set visData = loMainHF.DataBodyRange.SpecialCells(xlCellTypeVisible): On Error GoTo 0
     If Not visData Is Nothing Then
         For Each r In visData.Rows
             If Not r.EntireRow.Hidden Then
@@ -291,26 +298,21 @@ Sub NewFundsIdentificationMacro()
     Set wsUpload = GetOrClearSheet(wbMain, "Upload to SP")
     Dim upHeaders As Variant: upHeaders = Array("HFAD_Fund_CoperID", "HFAD_Fund_Name", "HFAD_IM_CoperID", _
                                                "HFAD_IM_Name", "HFAD_Credit_Officer", "Tier", "Status")
-    For j = LBound(upHeaders) To UBound(upHeaders)
-        wsUpload.Cells(1, j + 1).Value = upHeaders(j)
-    Next j
+    For j = LBound(upHeaders) To UBound(upHeaders): wsUpload.Cells(1, j + 1).Value = upHeaders(j): Next j
 
     rowCounter = 2
     For Each rec In newFunds
-        For j = LBound(rec) To UBound(rec)
-            wsUpload.Cells(rowCounter, j + 1).Value = rec(j)
-        Next j
+        For j = LBound(rec) To UBound(rec): wsUpload.Cells(rowCounter, j + 1).Value = rec(j): Next j
         rowCounter = rowCounter + 1
     Next rec
 
-    Dim rngUpload As Range
-    Set rngUpload = wsUpload.Range(wsUpload.Cells(1, 1), wsUpload.Cells(rowCounter - 1, UBound(upHeaders) + 1))
+    Dim rngUpload As Range: Set rngUpload = wsUpload.Range(wsUpload.Cells(1, 1), wsUpload.Cells(rowCounter - 1, UBound(upHeaders) + 1))
     Set loUpload = EnsureTableRange(wsUpload, "UploadHF", rngUpload)
 
     '=======================
     ' ADDITIONAL LOOKUPS & POPULATE EXTRA COLUMNS IN UploadHF
     '=======================
-    '--- CO_Table (Credit Officer -> Region, Email) --------
+    '--- Build dictionaries from CO_Table ------------------
     On Error Resume Next: Set wsCO = wbMain.Sheets("CO_Table"): On Error GoTo 0
     If Not wsCO Is Nothing Then
         Set loCO = wsCO.ListObjects("CO_Table")
@@ -327,7 +329,7 @@ Sub NewFundsIdentificationMacro()
         End If
     End If
 
-    '--- SharePoint IM dictionary --------------------------
+    '--- Build IM dictionary from SharePoint ---------------
     sp_IMCol        = GetColumnIndex(loMainSP, "HFAD_IM_CoperID")
     sp_NAVCol       = GetColumnIndex(loMainSP, "NAV Source")
     sp_FreqCol      = GetColumnIndex(loMainSP, "Frequency")
@@ -346,22 +348,22 @@ Sub NewFundsIdentificationMacro()
         End If
     Next rIdx
 
-    '--- Days to Report dict --------------------------------
+    '--- Build Days to Report dictionary -------------------
     hfDaysCol = GetColumnIndex(loMainHF, "HFAD_Days_to_report")
-    For rIdx = 1 To loMainHF.DataBodyRange.Rows.Count
-        key = Trim(CStr(loMainHF.DataBodyRange.Cells(rIdx, hfFundIDCol).Value))
-        If Len(key) > 0 Then
-            If Not daysDict.Exists(key) Then daysDict.Add key, loMainHF.DataBodyRange.Cells(rIdx, hfDaysCol).Value
-        End If
-    Next rIdx
+    If hfDaysCol > 0 Then
+        For rIdx = 1 To loMainHF.DataBodyRange.Rows.Count
+            key = Trim(CStr(loMainHF.DataBodyRange.Cells(rIdx, hfFundIDCol).Value))
+            If Len(key) > 0 Then If Not daysDict.Exists(key) Then daysDict.Add key, loMainHF.DataBodyRange.Cells(rIdx, hfDaysCol).Value
+        Next rIdx
+    End If
 
-    '--- Ensure & Fill extra columns ------------------------
-    Dim extraCols As Variant
-    extraCols = Array("Region", "NAV Source", "Frequency", "Ad-Hoc Reporting", "Parent/Flagship Reporting", "Days to Report")
+    '--- Ensure extra columns exist ------------------------
+    Dim extraCols As Variant: extraCols = Array("Region", "NAV Source", "Frequency", "Ad-Hoc Reporting", "Parent/Flagship Reporting", "Days to Report")
     For Each key In extraCols
         If Not ColumnExists(loUpload, CStr(key)) Then loUpload.ListColumns.Add.Name = CStr(key)
     Next key
 
+    '--- Fill extra columns --------------------------------
     up_CredCol    = GetColumnIndex(loUpload, "HFAD_Credit_Officer")
     up_RegCol     = GetColumnIndex(loUpload, "Region")
     up_IMIDCol    = GetColumnIndex(loUpload, "HFAD_IM_CoperID")
@@ -384,9 +386,9 @@ Sub NewFundsIdentificationMacro()
         ' IM-driven fields
         key = Trim(CStr(lrU.Range.Cells(1, up_IMIDCol).Value))
         If imDict.Exists(key) Then
-            lrU.Range.Cells(1, up_NAVCol).Value     = imDict(key)(0)
-            lrU.Range.Cells(1, up_FreqCol).Value    = imDict(key)(1)
-            lrU.Range.Cells(1, up_AdHocCol).Value   = imDict(key)(2)
+            lrU.Range.Cells(1, up_NAVCol).Value   = imDict(key)(0)
+            lrU.Range.Cells(1, up_FreqCol).Value  = imDict(key)(1)
+            lrU.Range.Cells(1, up_AdHocCol).Value = imDict(key)(2)
             lrU.Range.Cells(1, up_ParFlagCol).Value = imDict(key)(3)
         End If
 
@@ -416,11 +418,8 @@ Sub NewFundsIdentificationMacro()
     ' BUILD Inactive Funds sheet
     '=======================
     Set wsInactive = GetOrClearSheet(wbMain, "Inactive Funds Tracking")
-    Dim inactHeaders As Variant
-    inactHeaders = Array("HFAD_Fund_CoperID", "Status", "Comments", "Tier")
-    For j = LBound(inactHeaders) To UBound(inactHeaders)
-        wsInactive.Cells(1, j + 1).Value = inactHeaders(j)
-    Next j
+    Dim inactHeaders As Variant: inactHeaders = Array("HFAD_Fund_CoperID", "Status", "Comments", "Tier")
+    For j = LBound(inactHeaders) To UBound(inactHeaders): wsInactive.Cells(1, j + 1).Value = inactHeaders(j): Next j
 
     rowCounter = 2
     For Each rec In inactiveFunds
@@ -430,8 +429,7 @@ Sub NewFundsIdentificationMacro()
         rowCounter = rowCounter + 1
     Next rec
 
-    Dim rngInactive As Range
-    Set rngInactive = wsInactive.Range(wsInactive.Cells(1, 1), wsInactive.Cells(rowCounter - 1, UBound(inactHeaders) + 1))
+    Dim rngInactive As Range: Set rngInactive = wsInactive.Range(wsInactive.Cells(1, 1), wsInactive.Cells(rowCounter - 1, UBound(inactHeaders) + 1))
     Set loInactive = EnsureTableRange(wsInactive, "InactiveHF", rngInactive)
 
     '=======================
@@ -444,9 +442,7 @@ Sub NewFundsIdentificationMacro()
     Dim lr As ListRow, fundID As String
     For Each lr In loInactive.ListRows
         fundID = Trim(CStr(lr.Range.Cells(1, in_FundCol).Value))
-        If tierDict.Exists(fundID) Then
-            lr.Range.Cells(1, in_TierCol).Value = tierDict(fundID)
-        End If
+        If tierDict.Exists(fundID) Then lr.Range.Cells(1, in_TierCol).Value = tierDict(fundID)
     Next lr
 
     '=======================
