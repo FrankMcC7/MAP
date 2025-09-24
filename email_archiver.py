@@ -97,17 +97,27 @@ def _unique_path(base_path: Path) -> Path:
 
 
 # ─────────────────────────── SAVE ROUTINES ──────────────────────────
-def save_message(msg, root: str):
+def save_message(msg, root: str, forced_day: dt.date | None = None):
     """Save the whole e-mail as .msg using Subject-only naming with uniqueness."""
-    yr, mo = detect_period(msg)
-    year_dir = Path(root) / str(yr)
-    year_dir.mkdir(parents=True, exist_ok=True)
-    if mo is None:
-        folder = year_dir
-    else:
-        folder = year_dir / month_folder(mo)
+    root_path = Path(root)
+    is_default_root = os.path.normcase(os.path.normpath(root)) == os.path.normcase(os.path.normpath(DEFAULT_SAVE_PATH))
+    if forced_day is not None and is_default_root:
+        year_dir = root_path / str(forced_day.year)
+        year_dir.mkdir(parents=True, exist_ok=True)
+        month_dir = year_dir / month_folder(forced_day.month)
+        month_dir.mkdir(parents=True, exist_ok=True)
+        folder = month_dir / forced_day.isoformat()
         folder.mkdir(parents=True, exist_ok=True)
-        _ensure_remaining_months(year_dir, yr, mo)
+    else:
+        yr, mo = detect_period(msg)
+        year_dir = root_path / str(yr)
+        year_dir.mkdir(parents=True, exist_ok=True)
+        if mo is None:
+            folder = year_dir
+        else:
+            folder = year_dir / month_folder(mo)
+            folder.mkdir(parents=True, exist_ok=True)
+            _ensure_remaining_months(year_dir, yr, mo)
 
     subj = ILLEGAL_FS.sub("-", (msg.Subject or "No Subject")).strip()[:150]
     base = subj if subj else "No Subject"
@@ -116,38 +126,78 @@ def save_message(msg, root: str):
 
     msg.SaveAs(str(path), SAVE_TYPE)
 
-
-def save_attachments(msg, root: str):
+def save_attachments(msg, root: str, forced_day: dt.date | None = None):
     """Save attachments only using original attachment titles.
 
     Foldering:
     - If month extracted: Root/Year/MM-Month (and scaffold remaining months).
     - If not: Root/Year only, so analysts can place into correct month later.
     """
-    yr, mo = detect_period(msg)
-    year_dir = Path(root) / str(yr)
-    year_dir.mkdir(parents=True, exist_ok=True)
-    if mo is None:
-        folder = year_dir
-    else:
-        folder = year_dir / month_folder(mo)
+    root_path = Path(root)
+    is_default_root = os.path.normcase(os.path.normpath(root)) == os.path.normcase(os.path.normpath(DEFAULT_SAVE_PATH))
+    if forced_day is not None and is_default_root:
+        year_dir = root_path / str(forced_day.year)
+        year_dir.mkdir(parents=True, exist_ok=True)
+        month_dir = year_dir / month_folder(forced_day.month)
+        month_dir.mkdir(parents=True, exist_ok=True)
+        folder = month_dir / forced_day.isoformat()
         folder.mkdir(parents=True, exist_ok=True)
-        _ensure_remaining_months(year_dir, yr, mo)
+    else:
+        yr, mo = detect_period(msg)
+        year_dir = root_path / str(yr)
+        year_dir.mkdir(parents=True, exist_ok=True)
+        if mo is None:
+            folder = year_dir
+        else:
+            folder = year_dir / month_folder(mo)
+            folder.mkdir(parents=True, exist_ok=True)
+            _ensure_remaining_months(year_dir, yr, mo)
 
     for att in msg.Attachments:
         fname_raw = ILLEGAL_FS.sub("-", att.FileName)
         name = shorten_filename(str(folder), fname_raw, "")
-        path = _unique_path(Path(folder) / name)
+        path = _unique_path(folder / name)
         att.SaveAsFile(str(path))
 
 
-# ─────────────────────────── DATE / NLP HELPERS ─────────────────────
+def _plan_paths_for_message(msg, root: str, attachment_only: bool, forced_day: dt.date | None = None) -> Tuple[Path, List[Path]]:
+    root_path = Path(root)
+    is_default_root = os.path.normcase(os.path.normpath(root)) == os.path.normcase(os.path.normpath(DEFAULT_SAVE_PATH))
+    if forced_day is not None and is_default_root:
+        year_dir = root_path / str(forced_day.year)
+        month_dir = year_dir / month_folder(forced_day.month)
+        folder = month_dir / forced_day.isoformat()
+    else:
+        yr, mo = detect_period(msg)
+        year_dir = root_path / str(yr)
+        folder = year_dir if mo is None else (year_dir / month_folder(mo))
+
+    out_paths: List[Path] = []
+    if attachment_only:
+        try:
+            atts = list(msg.Attachments)
+        except Exception:
+            atts = []
+        for att in atts:
+            fname_raw = ILLEGAL_FS.sub("-", att.FileName)
+            name = shorten_filename(str(folder), fname_raw, "")
+            out_paths.append(_unique_path(folder / name))
+    else:
+        base = _sanitize_subject(msg)
+        name = shorten_filename(str(folder), base, ".msg")
+        out_paths.append(_unique_path(folder / name))
+    return folder, out_paths
+
+
+
+
 def detect_period(item) -> Tuple[int, int | None]:
     """Extract (year, month) from subject/attachment titles only; fallback to (current_year, None).
 
     Recognizes MonthName-Year, YYYY-MM/MM-YYYY, contiguous YYYYMM/MMYYYY,
     and day-inclusive forms like 31/08/2025, 2025-08-31, 31Aug25, 31August2025, 31.08.25, 310825.
     """
+
     def norm_two_digit_year(yy: int) -> int:
         # Policy: always interpret YY as 20YY (e.g., '25' -> 2025)
         return 2000 + yy
@@ -172,171 +222,192 @@ def detect_period(item) -> Tuple[int, int | None]:
     texts = [(subject, 0)] + [(name, 5) for name in att_names]
 
     # Month name alternatives (include 'sept')
-    MON = "jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december"
+    MON = (
+        "jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|"
+        "aug|august|sep|sept|september|oct|october|nov|november|dec|december"
+    )
     # Use non-letter boundaries so underscores count as separators too (e.g., Paribas_June 2025)
-    pat_mon_yyyy = re.compile(rf"(?<![A-Za-z])({MON})(?![A-Za-z])[-_/\.\s]*'?((?:19|20)\d{{2}})(?!\d)", re.I)
-    pat_yyyy_mon = re.compile(rf"\b((?:19|20)\d{{2}})\b[-_/\.\s]*'?({MON})(?![A-Za-z])", re.I)
-    pat_mon_yy   = re.compile(rf"(?<![A-Za-z])({MON})(?![A-Za-z])[-_/\.\s]*'?(\d{{2}})(?!\d)", re.I)
-    pat_dd_mon_yyyy = re.compile(rf"\b([0-3]?\d)[-_/\.\s]*({MON})[-_/\.\s]*'?((?:19|20)?\d{{2}})\b", re.I)
-    pat_mon_dd_yyyy = re.compile(rf"\b({MON})[-_/\.\s]*([0-3]?\d)[-_/\.\s]*'?((?:19|20)?\d{{2}})\b", re.I)
-    pat_ddmonyyyy_contig = re.compile(rf"(?<!\d)([0-3]?\d)({MON})((?:19|20)?\d{{2}})(?!\d)", re.I)
+    pat_mon_yyyy = re.compile(
+        rf"(?<![A-Za-z])({MON})(?![A-Za-z])[-_/\.\s]*'?((?:19|20)\d{{2}})(?!\d)", re.I
+    )
+    pat_yyyy_mon = re.compile(
+        rf"\b((?:19|20)\d{{2}})\b[-_/\.\s]*'?({MON})(?![A-Za-z])", re.I
+    )
+    pat_mon_yy = re.compile(
+        rf"(?<![A-Za-z])({MON})(?![A-Za-z])[-_/\.\s]*'?(\d{{2}})(?!\d)", re.I
+    )
+    pat_dd_mon_yyyy = re.compile(
+        rf"\b([0-3]?\d)[-_/\.\s]*({MON})[-_/\.\s]*'?((?:19|20)?\d{{2}})\b", re.I
+    )
+    pat_mon_dd_yyyy = re.compile(
+        rf"\b({MON})[-_/\.\s]*([0-3]?\d)[-_/\.\s]*'?((?:19|20)?\d{{2}})\b", re.I
+    )
+    pat_ddmonyyyy_contig = re.compile(
+        rf"(?<!\d)([0-3]?\d)({MON})((?:19|20)?\d{{2}})(?!\d)", re.I
+    )
 
     # Quarter variants (mapped to month: Q1->03, Q2->06, Q3->09, Q4->12)
     q_to_month = {1: 3, 2: 6, 3: 9, 4: 12}
-    pat_qn_yyyy  = re.compile(r"\bQ([1-4])[-_/\.\s]*((?:19|20)?\d{2})\b", re.I)
-    pat_yyyy_qn  = re.compile(r"\b((?:19|20)?\d{2})[-_/\.\s]*Q([1-4])\b", re.I)
-    pat_nq_yyyy  = re.compile(r"\b([1-4])Q[-_/\.\s]*((?:19|20)?\d{2})\b", re.I)
+    pat_qn_yyyy = re.compile(r"\bQ([1-4])[-_/\.\s]*((?:19|20)?\d{2})\b", re.I)
+    pat_yyyy_qn = re.compile(r"\b((?:19|20)?\d{2})[-_/\.\s]*Q([1-4])\b", re.I)
+    pat_nq_yyyy = re.compile(r"\b([1-4])Q[-_/\.\s]*((?:19|20)?\d{2})\b", re.I)
 
     # Numeric variants
     pat_yyyy_mm = re.compile(r"\b((?:19|20)\d{2})[-_/\.\s]([01]?\d)\b")
     pat_mm_yyyy = re.compile(r"\b([01]?\d)[-_/\.\s]((?:19|20)\d{2})\b")
-    pat_yyyymm  = re.compile(r"(?<!\d)((?:19|20)\d{2})(1[0-2]|0[1-9])(?!\d)")
-    pat_mmyyyy  = re.compile(r"(?<!\d)(1[0-2]|0[1-9])((?:19|20)\d{2})(?!\d)")
+    pat_yyyymm = re.compile(r"(?<!\d)((?:19|20)\d{2})(1[0-2]|0[1-9])(?!\d)")
+    pat_mmyyyy = re.compile(r"(?<!\d)(1[0-2]|0[1-9])((?:19|20)\d{2})(?!\d)")
     pat_dd_mm_yyyy = re.compile(r"\b([0-3]?\d)[-\./]([01]?\d)[-\./]((?:19|20)\d{2})\b")
     pat_yyyy_mm_dd = re.compile(r"\b((?:19|20)\d{2})[-\./]([01]?\d)[-\./]([0-3]?\d)\b")
-    pat_ddmmyyyy   = re.compile(r"(?<!\d)([0-3]\d)([01]\d)((?:19|20)\d{2})(?!\d)")
-    pat_ddmmyy     = re.compile(r"(?<!\d)([0-3]\d)([01]\d)(\d{2})(?!\d)")
+    pat_ddmmyyyy = re.compile(r"(?<!\d)([0-3]\d)([01]\d)((?:19|20)\d{2})(?!\d)")
+    pat_ddmmyy = re.compile(r"(?<!\d)([0-3]\d)([01]\d)(\d{2})(?!\d)")
 
     for text, bonus in texts:
         if not text:
             continue
-        # Normalize underscores to spaces
-        text = text.replace("_", " ")
-        # Month word based
-        for m in pat_mon_yyyy.finditer(text):
-            mon = mon_from_word(m.group(1))
-            year = int(m.group(2))
-            if mon:
-                add_candidate(candidates, year, mon, 90 + bonus)
-        for m in pat_yyyy_mon.finditer(text):
-            year = int(m.group(1))
-            mon = mon_from_word(m.group(2))
-            if mon:
-                add_candidate(candidates, year, mon, 85 + bonus)
-        for m in pat_mon_yy.finditer(text):
-            mon = mon_from_word(m.group(1))
-            yy = int(m.group(2))
-            year = norm_two_digit_year(yy)
-            if mon:
-                add_candidate(candidates, year, mon, 75 + bonus)
-        for m in pat_dd_mon_yyyy.finditer(text):
-            mon = mon_from_word(m.group(2))
-            yraw = m.group(3)
-            year = int(yraw) if len(yraw) == 4 else norm_two_digit_year(int(yraw))
-            if mon:
-                add_candidate(candidates, year, mon, 80 + bonus)
-        for m in pat_mon_dd_yyyy.finditer(text):
-            mon = mon_from_word(m.group(1))
-            yraw = m.group(3)
-            year = int(yraw) if len(yraw) == 4 else norm_two_digit_year(int(yraw))
-            if mon:
-                add_candidate(candidates, year, mon, 78 + bonus)
-        for m in pat_ddmonyyyy_contig.finditer(text):
-            mon = mon_from_word(m.group(2))
-            yraw = m.group(3)
-            year = int(yraw) if len(yraw) == 4 else norm_two_digit_year(int(yraw))
-            if mon:
-                add_candidate(candidates, year, mon, 77 + bonus)
+        text_clean = text.replace("’", "'")
 
-        # Quarter word/number based
-        for m in pat_qn_yyyy.finditer(text):
-            q = int(m.group(1))
-            yraw = m.group(2)
-            year = int(yraw) if len(yraw) == 4 else norm_two_digit_year(int(yraw))
-            add_candidate(candidates, year, q_to_month[q], 73 + bonus)
+        for match in pat_mon_yyyy.finditer(text_clean):
+            mon = mon_from_word(match.group(1))
+            yr = int(match.group(2))
+            add_candidate(candidates, yr, mon or 0, 100 + bonus)
 
-        for m in pat_yyyy_qn.finditer(text):
-            yraw = m.group(1)
-            q = int(m.group(2))
-            year = int(yraw) if len(yraw) == 4 else norm_two_digit_year(int(yraw))
-            add_candidate(candidates, year, q_to_month[q], 72 + bonus)
+        for match in pat_yyyy_mon.finditer(text_clean):
+            yr = int(match.group(1))
+            mon = mon_from_word(match.group(2))
+            add_candidate(candidates, yr, mon or 0, 95 + bonus)
 
-        for m in pat_nq_yyyy.finditer(text):
-            q = int(m.group(1))
-            yraw = m.group(2)
-            year = int(yraw) if len(yraw) == 4 else norm_two_digit_year(int(yraw))
-            add_candidate(candidates, year, q_to_month[q], 71 + bonus)
+        for match in pat_mon_yy.finditer(text_clean):
+            mon = mon_from_word(match.group(1))
+            yr = norm_two_digit_year(int(match.group(2)))
+            add_candidate(candidates, yr, mon or 0, 90 + bonus)
 
-        # Numeric variants
-        for m in pat_yyyy_mm.finditer(text):
-            year = int(m.group(1))
-            month = int(m.group(2))
-            add_candidate(candidates, year, month, 70 + bonus)
-        for m in pat_mm_yyyy.finditer(text):
-            month = int(m.group(1))
-            year = int(m.group(2))
-            add_candidate(candidates, year, month, 68 + bonus)
-        for m in pat_yyyymm.finditer(text):
-            year = int(m.group(1))
-            month = int(m.group(2))
-            add_candidate(candidates, year, month, 65 + bonus)
-        for m in pat_mmyyyy.finditer(text):
-            month = int(m.group(1))
-            year = int(m.group(2))
-            add_candidate(candidates, year, month, 60 + bonus)
-        for m in pat_dd_mm_yyyy.finditer(text):
-            year = int(m.group(3))
-            month = int(m.group(2))
-            add_candidate(candidates, year, month, 55 + bonus)
-        for m in pat_yyyy_mm_dd.finditer(text):
-            year = int(m.group(1))
-            month = int(m.group(2))
-            add_candidate(candidates, year, month, 55 + bonus)
-        for m in pat_ddmmyyyy.finditer(text):
-            year = int(m.group(3))
-            month = int(m.group(2))
-            add_candidate(candidates, year, month, 53 + bonus)
-        for m in pat_ddmmyy.finditer(text):
-            yy = int(m.group(3))
-            year = norm_two_digit_year(yy)
-            month = int(m.group(2))
-            add_candidate(candidates, year, month, 50 + bonus)
+        for match in pat_dd_mon_yyyy.finditer(text_clean):
+            day = int(match.group(1))
+            mon = mon_from_word(match.group(2))
+            yr_raw = match.group(3)
+            yr = int(yr_raw) if len(yr_raw) == 4 else norm_two_digit_year(int(yr_raw))
+            add_candidate(candidates, yr, mon or 0, 80 + bonus + (2 if day <= 12 else 0))
 
-        # Month-only (no explicit year): infer year based on current month
-        pat_mon_only = re.compile(rf"(?<![A-Za-z])({MON})(?![A-Za-z])", re.I)
-        for m in pat_mon_only.finditer(text):
-            mon = mon_from_word(m.group(1))
-            if mon:
-                today2 = dt.date.today()
-                inferred_year = today2.year if mon <= today2.month else (today2.year - 1)
-                add_candidate(candidates, inferred_year, mon, 45 + bonus)
+        for match in pat_mon_dd_yyyy.finditer(text_clean):
+            mon = mon_from_word(match.group(1))
+            day = int(match.group(2))
+            yr_raw = match.group(3)
+            yr = int(yr_raw) if len(yr_raw) == 4 else norm_two_digit_year(int(yr_raw))
+            add_candidate(candidates, yr, mon or 0, 78 + bonus + (2 if day <= 12 else 0))
 
-    today = dt.date.today()
+        for match in pat_ddmonyyyy_contig.finditer(text_clean):
+            day = int(match.group(1))
+            mon = mon_from_word(match.group(2))
+            yr_raw = match.group(3)
+            yr = int(yr_raw) if len(yr_raw) == 4 else norm_two_digit_year(int(yr_raw))
+            add_candidate(candidates, yr, mon or 0, 75 + bonus + (2 if day <= 12 else 0))
+
+        for match in pat_qn_yyyy.finditer(text_clean):
+            q = int(match.group(1))
+            yr_raw = match.group(2)
+            yr = int(yr_raw) if len(yr_raw) == 4 else norm_two_digit_year(int(yr_raw))
+            add_candidate(candidates, yr, q_to_month.get(q, 0), 70 + bonus)
+
+        for match in pat_yyyy_qn.finditer(text_clean):
+            yr_raw = match.group(1)
+            yr = int(yr_raw) if len(yr_raw) == 4 else norm_two_digit_year(int(yr_raw))
+            q = int(match.group(2))
+            add_candidate(candidates, yr, q_to_month.get(q, 0), 68 + bonus)
+
+        for match in pat_nq_yyyy.finditer(text_clean):
+            q = int(match.group(1))
+            yr_raw = match.group(2)
+            yr = int(yr_raw) if len(yr_raw) == 4 else norm_two_digit_year(int(yr_raw))
+            add_candidate(candidates, yr, q_to_month.get(q, 0), 66 + bonus)
+
+        for match in pat_yyyy_mm.finditer(text_clean):
+            yr = int(match.group(1))
+            mon = int(match.group(2))
+            add_candidate(candidates, yr, mon, 60 + bonus)
+
+        for match in pat_mm_yyyy.finditer(text_clean):
+            mon = int(match.group(1))
+            yr = int(match.group(2))
+            add_candidate(candidates, yr, mon, 58 + bonus)
+
+        for match in pat_yyyymm.finditer(text_clean):
+            yr = int(match.group(1))
+            mon = int(match.group(2))
+            add_candidate(candidates, yr, mon, 56 + bonus)
+
+        for match in pat_mmyyyy.finditer(text_clean):
+            mon = int(match.group(1))
+            yr = int(match.group(2))
+            add_candidate(candidates, yr, mon, 54 + bonus)
+
+        for match in pat_dd_mm_yyyy.finditer(text_clean):
+            day = int(match.group(1))
+            mon = int(match.group(2))
+            yr = int(match.group(3))
+            add_candidate(candidates, yr, mon, 50 + bonus + (2 if day <= 12 else 0))
+
+        for match in pat_yyyy_mm_dd.finditer(text_clean):
+            yr = int(match.group(1))
+            mon = int(match.group(2))
+            day = int(match.group(3))
+            add_candidate(candidates, yr, mon, 48 + bonus + (2 if day <= 12 else 0))
+
+        for match in pat_ddmmyyyy.finditer(text_clean):
+            day = int(match.group(1))
+            mon = int(match.group(2))
+            yr = int(match.group(3))
+            add_candidate(candidates, yr, mon, 46 + bonus + (2 if day <= 12 else 0))
+
+        for match in pat_ddmmyy.finditer(text_clean):
+            day = int(match.group(1))
+            mon = int(match.group(2))
+            yr = norm_two_digit_year(int(match.group(3)))
+            add_candidate(candidates, yr, mon, 44 + bonus + (2 if day <= 12 else 0))
+
+        for match in ISO_RGX.finditer(text_clean):
+            yr = int(match.group(1))
+            mon = int(match.group(2))
+            add_candidate(candidates, yr, mon, 40 + bonus)
+
+        for mon_word in MON.split('|'):
+            mon_idx = mon_from_word(mon_word)
+            if mon_idx and mon_word.lower() in text_clean.lower():
+                today_hint = dt.date.today()
+                add_candidate(candidates, today_hint.year, mon_idx, 10 + bonus)
+
     if candidates:
         candidates.sort(key=lambda t: (t[2], t[0], t[1]))
+        today = dt.date.today()
         y, m, _ = candidates[-1]
-        # Future-period control: do not return a period beyond current year/month
         if y > today.year:
             return today.year, None
         if y == today.year and m is not None and m > today.month:
             return today.year, None
         return y, m
 
-    # Fallback: current year only (no month)
+    today = dt.date.today()
     return today.year, None
 
 
-# ─────────────────────────── CATEGORY HELPER ────────────────────────
 def set_category(itm: Any, cat: str):
     """Append the category without overwriting existing categories."""
     try:
         existing = itm.Categories or ""
     except Exception:
         existing = ""
-    cats = [c.strip() for c in existing.split(";") if c.strip()]
+    cats = [c.strip() for c in existing.split(';') if c.strip()]
     if cat and cat not in cats:
         cats.append(cat)
-        itm.Categories = "; ".join(cats)
+        itm.Categories = '; '.join(cats)
         try:
             itm.Save()
         except Exception:
             pass
 
 
-# ─────────────────────────── ROUTE RESOLVER ────────────────────────
 def add_row(df: pd.DataFrame, sender: str, root: str):
-    df.loc[len(df)] = [sender, "no", "", root, "no"]
-
+    df.loc[len(df)] = [sender, 'no', '', root, 'no']
 
 
 def resolve_route(sender: str, subject: str, df, exact, generic) -> Tuple[str, bool] | None:
@@ -344,7 +415,7 @@ def resolve_route(sender: str, subject: str, df, exact, generic) -> Tuple[str, b
     if key in exact:
         return exact[key]
 
-    subject_lc = (subject or "").strip().lower()
+    subject_lc = (subject or '').strip().lower()
     domain = _domain_from_sender(sender) or key
     if not domain:
         return None
@@ -354,87 +425,83 @@ def resolve_route(sender: str, subject: str, df, exact, generic) -> Tuple[str, b
             if any(k and k in subject_lc for k in keys):
                 return root, attach
 
-    if "SenderEmail" not in df.columns:
+    if 'SenderEmail' not in df.columns:
         return None
 
-    sender_series = df["SenderEmail"].astype(str).str.strip().str.lower()
+    sender_series = df['SenderEmail'].astype(str).str.strip().str.lower()
     cand = df[sender_series.str.endswith(domain)]
     if cand.empty:
         return None
 
-    if "GenericSender" in cand.columns:
-        non_gen = cand[~cand["GenericSender"].apply(_to_bool)]
+    if 'GenericSender' in cand.columns:
+        non_gen = cand[~cand['GenericSender'].apply(_to_bool)]
     else:
         non_gen = cand
 
     if not non_gen.empty:
-        root = str(non_gen.iloc[0].get("RootPath", "")).strip()
+        root = str(non_gen.iloc[0].get('RootPath', '')).strip()
         if root:
             add_row(df, sender, root)
             return root, False
         return None
 
-    if "SubjectKey" in cand.columns:
+    if 'SubjectKey' in cand.columns:
         for _, r in cand.iterrows():
-            keys = [k.strip().lower() for k in str(r.get("SubjectKey", "")).split(",") if k.strip()]
+            keys = [k.strip().lower() for k in str(r.get('SubjectKey', '')).split(',') if k.strip()]
             if any(subject_lc == key for key in keys):
-                root = str(r.get("RootPath", "")).strip()
+                root = str(r.get('RootPath', '')).strip()
                 if root:
                     add_row(df, sender, root)
                     return root, False
     return None
 
 
-
-
-# --- PRE-SCAN HELPERS ---
-
 def _normalize_sender_key(sender: str) -> str:
-    return (sender or "").strip().lower()
+    return (sender or '').strip().lower()
 
 
 def _domain_from_sender(sender: str) -> str | None:
     key = _normalize_sender_key(sender)
-    if "@" not in key:
+    if '@' not in key:
         return None
-    domain = key.split("@")[-1]
+    domain = key.split('@')[-1]
     return domain or None
 
 
 def _match_template_row(df: pd.DataFrame, sender: str, subject: str):
-    if "SenderEmail" not in df.columns:
+    if 'SenderEmail' not in df.columns:
         return None
     domain = _domain_from_sender(sender)
     if not domain:
         return None
 
-    sender_col = df["SenderEmail"].astype(str).str.strip().str.lower()
+    sender_col = df['SenderEmail'].astype(str).str.strip().str.lower()
     domain_mask = sender_col.str.endswith(domain)
     subset = df.loc[domain_mask]
     if subset.empty:
         return None
 
-    if "GenericSender" in subset.columns:
-        non_generic_subset = subset[~subset["GenericSender"].apply(_to_bool)]
+    if 'GenericSender' in subset.columns:
+        non_generic_subset = subset[~subset['GenericSender'].apply(_to_bool)]
     else:
         non_generic_subset = subset
 
     if not non_generic_subset.empty:
         return non_generic_subset.iloc[0]
 
-    if "GenericSender" not in subset.columns:
+    if 'GenericSender' not in subset.columns:
         return None
 
-    generic_subset = subset[subset["GenericSender"].apply(_to_bool)]
+    generic_subset = subset[subset['GenericSender'].apply(_to_bool)]
     if generic_subset.empty:
         return None
 
-    subject_lc = (subject or "").strip().lower()
+    subject_lc = (subject or '').strip().lower()
     if not subject_lc:
         return None
 
     for _, row in generic_subset.iterrows():
-        keys = [k.strip().lower() for k in str(row.get("SubjectKey", "")).split(",") if k.strip()]
+        keys = [k.strip().lower() for k in str(row.get('SubjectKey', '')).split(',') if k.strip()]
         if any(subject_lc == key for key in keys):
             return row
     return None
@@ -442,13 +509,13 @@ def _match_template_row(df: pd.DataFrame, sender: str, subject: str):
 
 def _preprocess_sender_map(ns, df: pd.DataFrame, start: dt.date, end: dt.date):
     added_rows: list[dict[str, Any]] = []
-    if "SenderEmail" not in df.columns:
+    if 'SenderEmail' not in df.columns:
         return df, added_rows
 
     existing: set[str] = set()
-    for val in df["SenderEmail"].tolist():
+    for val in df['SenderEmail'].tolist():
         key = _normalize_sender_key(str(val))
-        if key and key != "nan":
+        if key and key != 'nan':
             existing.add(key)
 
     for mailbox in MAILBOXES:
@@ -458,8 +525,8 @@ def _preprocess_sender_map(ns, df: pd.DataFrame, start: dt.date, end: dt.date):
             continue
         for msg in items:
             try:
-                sender = getattr(msg, "SenderEmailAddress", "") or ""
-                subject = getattr(msg, "Subject", "") or ""
+                sender = getattr(msg, 'SenderEmailAddress', '') or ''
+                subject = getattr(msg, 'Subject', '') or ''
             except Exception:
                 continue
 
@@ -473,10 +540,10 @@ def _preprocess_sender_map(ns, df: pd.DataFrame, start: dt.date, end: dt.date):
 
             row_dict = {}
             for col in df.columns:
-                if col == "SenderEmail":
+                if col == 'SenderEmail':
                     row_dict[col] = sender
                 else:
-                    row_dict[col] = template.get(col, "")
+                    row_dict[col] = template.get(col, '')
             df.loc[len(df)] = row_dict
             added_rows.append(row_dict.copy())
             existing.add(sender_key)
@@ -493,26 +560,26 @@ def _update_summary_workbook(summary_rows: List[dict[str, Any]], start: dt.date,
     except Exception:
         return
 
-    if df.empty or "Date" not in df.columns:
+    if df.empty or 'Date' not in df.columns:
         return
 
     try:
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
     except Exception:
         return
 
-    df["Date"] = df["Date"].fillna(pd.Timestamp(start))
-    df["Date"] = df["Date"].dt.date
+    df['Date'] = df['Date'].fillna(pd.Timestamp(start))
+    df['Date'] = df['Date'].dt.date
 
-    saved_mask = df["Action"].isin({"message", "attachments"})
-    default_mask = saved_mask & (df["Root"] == DEFAULT_SAVE_PATH)
+    saved_mask = df['Action'].isin({'message', 'attachments'})
+    default_mask = saved_mask & (df['Root'] == DEFAULT_SAVE_PATH)
 
     summary = (
         df.assign(
             SavedCount=saved_mask.astype(int),
             DefaultPathCount=default_mask.astype(int),
         )
-        .groupby("Date", dropna=False)[["SavedCount", "DefaultPathCount"]]
+        .groupby('Date', dropna=False)[['SavedCount', 'DefaultPathCount']]
         .sum()
         .reset_index()
     )
@@ -520,11 +587,11 @@ def _update_summary_workbook(summary_rows: List[dict[str, Any]], start: dt.date,
     if summary.empty:
         return
 
-    summary[["SavedCount", "DefaultPathCount"]] = summary[["SavedCount", "DefaultPathCount"]].astype(int)
-    summary["RunStart"] = start.isoformat()
-    summary["RunEnd"] = end.isoformat()
-    summary["LoggedAt"] = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    summary = summary.sort_values("Date").reset_index(drop=True)
+    summary[['SavedCount', 'DefaultPathCount']] = summary[['SavedCount', 'DefaultPathCount']].astype(int)
+    summary['RunStart'] = start.isoformat()
+    summary['RunEnd'] = end.isoformat()
+    summary['LoggedAt'] = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    summary = summary.sort_values('Date').reset_index(drop=True)
 
     dest = Path(SUMMARY_PATH)
     try:
@@ -543,36 +610,34 @@ def _update_summary_workbook(summary_rows: List[dict[str, Any]], start: dt.date,
         print(f"[WARN] Could not update summary workbook: {exc}")
 
 
-
-# ─────────────────────────── ARCHIVE ENGINE ─────────────────────────
 def _build_route_index(df: pd.DataFrame):
     exact: dict[str, Tuple[str, bool]] = {}
     generic: dict[str, List[Tuple[List[str], str, bool]]] = {}
     for _, row in df.iterrows():
-        sender = str(row.get("SenderEmail", "")).strip()
-        root = str(row.get("RootPath", "")).strip()
-        gflag = str(row.get("GenericSender", "")).strip().lower()
-        attach = _to_bool(row.get("Attachment", "no"))
-        subj_keys = [k.strip().lower() for k in str(row.get("SubjectKey", "")).split(",") if k.strip()]
+        sender = str(row.get('SenderEmail', '')).strip()
+        root = str(row.get('RootPath', '')).strip()
+        gflag = str(row.get('GenericSender', '')).strip().lower()
+        attach = _to_bool(row.get('Attachment', 'no'))
+        subj_keys = [k.strip().lower() for k in str(row.get('SubjectKey', '')).split(',') if k.strip()]
         if not sender or not root:
             continue
-        if gflag == "no":
+        if gflag == 'no':
             exact[sender.lower()] = (root, attach)
         else:
-            domain = sender.split("@")[-1].lower()
+            domain = sender.split('@')[-1].lower()
             generic.setdefault(domain, []).append((subj_keys, root, attach))
     return exact, generic
 
 
 def _format_outlook_datetime(d: dt.datetime) -> str:
-    return d.strftime("%m/%d/%Y %I:%M %p")
+    return d.strftime('%m/%d/%Y %I:%M %p')
 
 
 def _iter_messages_in_window(ns, mailbox: str, start: dt.date, end: dt.date):
     store = ns.Folders.Item(mailbox)
-    inbox = store.Folders.Item("Inbox")
+    inbox = store.Folders.Item('Inbox')
     items = inbox.Items
-    items.Sort("[ReceivedTime]", True)
+    items.Sort('[ReceivedTime]', True)
     start_dt = dt.datetime.combine(start, dt.time.min)
     end_dt = dt.datetime.combine(end, dt.time.max)
     flt = (
@@ -585,30 +650,7 @@ def _iter_messages_in_window(ns, mailbox: str, start: dt.date, end: dt.date):
 
 
 def _sanitize_subject(msg) -> str:
-    return ILLEGAL_FS.sub("-", (msg.Subject or "No Subject")).strip()[:150] or "No Subject"
-
-
-def _plan_paths_for_message(msg, root: str, attachment_only: bool) -> Tuple[Path, List[Path]]:
-    yr, mo = detect_period(msg)
-    year_dir = Path(root) / str(yr)
-    folder = year_dir if mo is None else (year_dir / month_folder(mo))
-    out_paths: List[Path] = []
-    if attachment_only:
-        try:
-            atts = list(msg.Attachments)
-        except Exception:
-            atts = []
-        for att in atts:
-            fname_raw = ILLEGAL_FS.sub("-", att.FileName)
-            name = shorten_filename(str(folder), fname_raw, "")
-            out_paths.append(_unique_path(folder / name))
-    else:
-        base = _sanitize_subject(msg)
-        name = shorten_filename(str(folder), base, ".msg")
-        out_paths.append(_unique_path(folder / name))
-    return folder, out_paths
-
-
+    return ILLEGAL_FS.sub('-', (msg.Subject or 'No Subject').strip())[:150] or 'No Subject'
 
 def archive_window(start: dt.date, end: dt.date, dry_run: bool = False, interactive_confirm: bool = False):
     df = pd.read_excel(MAP_PATH, dtype=str).fillna("")
@@ -673,7 +715,13 @@ def archive_window(start: dt.date, end: dt.date, dry_run: bool = False, interact
                 else:
                     planned_cat = CAT_SAVED
 
-            folder, file_paths = _plan_paths_for_message(msg, root, attach_only)
+            is_default_root = os.path.normcase(os.path.normpath(root)) == os.path.normcase(os.path.normpath(DEFAULT_SAVE_PATH))
+            if is_default_root:
+                forced_day = received_date or start
+            else:
+                forced_day = None
+
+            folder, file_paths = _plan_paths_for_message(msg, root, attach_only, forced_day)
 
             action = "attachments" if attach_only else "message"
             if attach_only:
@@ -684,14 +732,27 @@ def archive_window(start: dt.date, end: dt.date, dry_run: bool = False, interact
                 if not has_att:
                     action = "skip"
 
+            folder_path = Path(folder)
+            root_path = Path(root)
+            try:
+                rel_parts = folder_path.relative_to(root_path).parts
+            except Exception:
+                rel_parts = ()
+            if rel_parts:
+                year_value = rel_parts[0]
+                month_value = rel_parts[1] if len(rel_parts) > 1 else ""
+            else:
+                year_value = folder_path.name
+                month_value = folder_path.name if folder_path.name and folder_path.name[:2].isdigit() else ""
+
             summary_rows.append(
                 {
                     "Date": received_date.isoformat() if received_date else start.isoformat(),
                     "Mailbox": mailbox,
                     "Sender": sender,
                     "Subject": subject,
-                    "Year": str(folder.parent.name) if folder != Path(root) else str(folder.name),
-                    "MonthFolder": folder.name if folder.name and folder.name[:2].isdigit() else "",
+                    "Year": year_value,
+                    "MonthFolder": month_value,
                     "Root": root,
                     "Folder": str(folder),
                     "Files": "; ".join(str(p) for p in file_paths) if file_paths else "",
@@ -703,12 +764,13 @@ def archive_window(start: dt.date, end: dt.date, dry_run: bool = False, interact
             if not dry_run:
                 try:
                     if action == "attachments":
-                        save_attachments(msg, root)
+                        save_attachments(msg, root, forced_day)
                     elif action == "message":
-                        save_message(msg, root)
+                        save_message(msg, root, forced_day)
                     set_category(msg, planned_cat)
                 except Exception as e:
                     print(f"[ERROR] Saving item failed: {e}")
+
 
     if not dry_run and unknown_rows:
         try:
