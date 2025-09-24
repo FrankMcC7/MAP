@@ -173,9 +173,10 @@ def detect_period(item) -> Tuple[int, int | None]:
 
     # Month name alternatives (include 'sept')
     MON = "jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december"
-    pat_mon_yyyy = re.compile(rf"\b({MON})\b[-_/\.\s]*'?((?:19|20)\d{{2}})\b", re.I)
-    pat_yyyy_mon = re.compile(rf"\b((?:19|20)\d{{2}})\b[-_/\.\s]*'?({MON})\b", re.I)
-    pat_mon_yy   = re.compile(rf"\b({MON})\b[-_/\.\s]*'?(\d{{2}})\b", re.I)
+    # Use non-letter boundaries so underscores count as separators too (e.g., Paribas_June 2025)
+    pat_mon_yyyy = re.compile(rf"(?<![A-Za-z])({MON})(?![A-Za-z])[-_/\.\s]*'?((?:19|20)\d{{2}})(?!\d)", re.I)
+    pat_yyyy_mon = re.compile(rf"\b((?:19|20)\d{{2}})\b[-_/\.\s]*'?({MON})(?![A-Za-z])", re.I)
+    pat_mon_yy   = re.compile(rf"(?<![A-Za-z])({MON})(?![A-Za-z])[-_/\.\s]*'?(\d{{2}})(?!\d)", re.I)
     pat_dd_mon_yyyy = re.compile(rf"\b([0-3]?\d)[-_/\.\s]*({MON})[-_/\.\s]*'?((?:19|20)?\d{{2}})\b", re.I)
     pat_mon_dd_yyyy = re.compile(rf"\b({MON})[-_/\.\s]*([0-3]?\d)[-_/\.\s]*'?((?:19|20)?\d{{2}})\b", re.I)
     pat_ddmonyyyy_contig = re.compile(rf"(?<!\d)([0-3]?\d)({MON})((?:19|20)?\d{{2}})(?!\d)", re.I)
@@ -199,6 +200,8 @@ def detect_period(item) -> Tuple[int, int | None]:
     for text, bonus in texts:
         if not text:
             continue
+        # Normalize underscores to spaces
+        text = text.replace("_", " ")
         # Month word based
         for m in pat_mon_yyyy.finditer(text):
             mon = mon_from_word(m.group(1))
@@ -289,6 +292,15 @@ def detect_period(item) -> Tuple[int, int | None]:
             month = int(m.group(2))
             add_candidate(candidates, year, month, 50 + bonus)
 
+        # Month-only (no explicit year): infer year based on current month
+        pat_mon_only = re.compile(rf"(?<![A-Za-z])({MON})(?![A-Za-z])", re.I)
+        for m in pat_mon_only.finditer(text):
+            mon = mon_from_word(m.group(1))
+            if mon:
+                today2 = dt.date.today()
+                inferred_year = today2.year if mon <= today2.month else (today2.year - 1)
+                add_candidate(candidates, inferred_year, mon, 45 + bonus)
+
     today = dt.date.today()
     if candidates:
         candidates.sort(key=lambda t: (t[2], t[0], t[1]))
@@ -326,28 +338,210 @@ def add_row(df: pd.DataFrame, sender: str, root: str):
     df.loc[len(df)] = [sender, "no", "", root, "no"]
 
 
+
 def resolve_route(sender: str, subject: str, df, exact, generic) -> Tuple[str, bool] | None:
-    key = sender.lower()
+    key = _normalize_sender_key(sender)
     if key in exact:
         return exact[key]
 
-    subject_lc = (subject or "").lower()
-    domain = sender.split("@")[-1].lower()
+    subject_lc = (subject or "").strip().lower()
+    domain = _domain_from_sender(sender) or key
+    if not domain:
+        return None
+
     if domain in generic:
         for keys, root, attach in generic[domain]:
             if any(k and k in subject_lc for k in keys):
                 return root, attach
-    cand = df[df["SenderEmail"].str.lower().str.endswith(domain)]
-    non_gen = cand[cand["GenericSender"] == "no"]
+
+    if "SenderEmail" not in df.columns:
+        return None
+
+    sender_series = df["SenderEmail"].astype(str).str.strip().str.lower()
+    cand = df[sender_series.str.endswith(domain)]
+    if cand.empty:
+        return None
+
+    if "GenericSender" in cand.columns:
+        non_gen = cand[~cand["GenericSender"].apply(_to_bool)]
+    else:
+        non_gen = cand
+
     if not non_gen.empty:
-        root = non_gen.iloc[0]["RootPath"]
-        add_row(df, sender, root)
-        return root, False
-    for _, r in cand.iterrows():
-        if any((k.strip().lower() or "") in subject_lc for k in r["SubjectKey"].split(",")):
-            add_row(df, sender, r["RootPath"])
-            return r["RootPath"], False
+        root = str(non_gen.iloc[0].get("RootPath", "")).strip()
+        if root:
+            add_row(df, sender, root)
+            return root, False
+        return None
+
+    if "SubjectKey" in cand.columns:
+        for _, r in cand.iterrows():
+            keys = [k.strip().lower() for k in str(r.get("SubjectKey", "")).split(",") if k.strip()]
+            if any(subject_lc == key for key in keys):
+                root = str(r.get("RootPath", "")).strip()
+                if root:
+                    add_row(df, sender, root)
+                    return root, False
     return None
+
+
+
+
+# --- PRE-SCAN HELPERS ---
+
+def _normalize_sender_key(sender: str) -> str:
+    return (sender or "").strip().lower()
+
+
+def _domain_from_sender(sender: str) -> str | None:
+    key = _normalize_sender_key(sender)
+    if "@" not in key:
+        return None
+    domain = key.split("@")[-1]
+    return domain or None
+
+
+def _match_template_row(df: pd.DataFrame, sender: str, subject: str):
+    if "SenderEmail" not in df.columns:
+        return None
+    domain = _domain_from_sender(sender)
+    if not domain:
+        return None
+
+    sender_col = df["SenderEmail"].astype(str).str.strip().str.lower()
+    domain_mask = sender_col.str.endswith(domain)
+    subset = df.loc[domain_mask]
+    if subset.empty:
+        return None
+
+    if "GenericSender" in subset.columns:
+        non_generic_subset = subset[~subset["GenericSender"].apply(_to_bool)]
+    else:
+        non_generic_subset = subset
+
+    if not non_generic_subset.empty:
+        return non_generic_subset.iloc[0]
+
+    if "GenericSender" not in subset.columns:
+        return None
+
+    generic_subset = subset[subset["GenericSender"].apply(_to_bool)]
+    if generic_subset.empty:
+        return None
+
+    subject_lc = (subject or "").strip().lower()
+    if not subject_lc:
+        return None
+
+    for _, row in generic_subset.iterrows():
+        keys = [k.strip().lower() for k in str(row.get("SubjectKey", "")).split(",") if k.strip()]
+        if any(subject_lc == key for key in keys):
+            return row
+    return None
+
+
+def _preprocess_sender_map(ns, df: pd.DataFrame, start: dt.date, end: dt.date):
+    added_rows: list[dict[str, Any]] = []
+    if "SenderEmail" not in df.columns:
+        return df, added_rows
+
+    existing: set[str] = set()
+    for val in df["SenderEmail"].tolist():
+        key = _normalize_sender_key(str(val))
+        if key and key != "nan":
+            existing.add(key)
+
+    for mailbox in MAILBOXES:
+        try:
+            items = _iter_messages_in_window(ns, mailbox, start, end)
+        except Exception:
+            continue
+        for msg in items:
+            try:
+                sender = getattr(msg, "SenderEmailAddress", "") or ""
+                subject = getattr(msg, "Subject", "") or ""
+            except Exception:
+                continue
+
+            sender_key = _normalize_sender_key(sender)
+            if not sender_key or sender_key in existing:
+                continue
+
+            template = _match_template_row(df, sender, subject)
+            if template is None:
+                continue
+
+            row_dict = {}
+            for col in df.columns:
+                if col == "SenderEmail":
+                    row_dict[col] = sender
+                else:
+                    row_dict[col] = template.get(col, "")
+            df.loc[len(df)] = row_dict
+            added_rows.append(row_dict.copy())
+            existing.add(sender_key)
+
+    return df, added_rows
+
+
+def _update_summary_workbook(summary_rows: List[dict[str, Any]], start: dt.date, end: dt.date) -> None:
+    if not summary_rows:
+        return
+
+    try:
+        df = pd.DataFrame(summary_rows)
+    except Exception:
+        return
+
+    if df.empty or "Date" not in df.columns:
+        return
+
+    try:
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    except Exception:
+        return
+
+    df["Date"] = df["Date"].fillna(pd.Timestamp(start))
+    df["Date"] = df["Date"].dt.date
+
+    saved_mask = df["Action"].isin({"message", "attachments"})
+    default_mask = saved_mask & (df["Root"] == DEFAULT_SAVE_PATH)
+
+    summary = (
+        df.assign(
+            SavedCount=saved_mask.astype(int),
+            DefaultPathCount=default_mask.astype(int),
+        )
+        .groupby("Date", dropna=False)[["SavedCount", "DefaultPathCount"]]
+        .sum()
+        .reset_index()
+    )
+
+    if summary.empty:
+        return
+
+    summary[["SavedCount", "DefaultPathCount"]] = summary[["SavedCount", "DefaultPathCount"]].astype(int)
+    summary["RunStart"] = start.isoformat()
+    summary["RunEnd"] = end.isoformat()
+    summary["LoggedAt"] = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    summary = summary.sort_values("Date").reset_index(drop=True)
+
+    dest = Path(SUMMARY_PATH)
+    try:
+        if dest.exists():
+            previous = pd.read_excel(dest)
+        else:
+            previous = pd.DataFrame()
+    except Exception:
+        previous = pd.DataFrame()
+
+    combined = pd.concat([previous, summary], ignore_index=True)
+
+    try:
+        combined.to_excel(dest, index=False)
+    except Exception as exc:
+        print(f"[WARN] Could not update summary workbook: {exc}")
+
 
 
 # ─────────────────────────── ARCHIVE ENGINE ─────────────────────────
@@ -415,12 +609,27 @@ def _plan_paths_for_message(msg, root: str, attachment_only: bool) -> Tuple[Path
     return folder, out_paths
 
 
+
 def archive_window(start: dt.date, end: dt.date, dry_run: bool = False, interactive_confirm: bool = False):
     df = pd.read_excel(MAP_PATH, dtype=str).fillna("")
-    exact, generic = _build_route_index(df)
 
     outlook = win32.Dispatch("Outlook.Application")
     ns = outlook.GetNamespace("MAPI")
+
+    df, added_rows = _preprocess_sender_map(ns, df, start, end)
+
+    if added_rows:
+        if dry_run:
+            print(f"[INFO] Pre-scan identified {len(added_rows)} new sender(s) (not persisted during dry run).")
+        else:
+            try:
+                df.to_excel(MAP_PATH, index=False)
+                print(f"[INFO] Pre-scan added {len(added_rows)} new sender(s) to routing map.")
+            except Exception as e:
+                print(f"[WARN] Could not write updated routes to '{MAP_PATH}': {e}")
+
+    df = df.fillna("")
+    exact, generic = _build_route_index(df)
 
     summary_rows = []
     unknown_rows = []
@@ -436,8 +645,16 @@ def archive_window(start: dt.date, end: dt.date, dry_run: bool = False, interact
             try:
                 sender = getattr(msg, "SenderEmailAddress", "") or ""
                 subject = getattr(msg, "Subject", "") or ""
+                received_raw = getattr(msg, "ReceivedTime", None)
             except Exception:
                 continue
+
+            received_date = None
+            if received_raw:
+                try:
+                    received_date = pd.Timestamp(received_raw).date()
+                except Exception:
+                    received_date = None
 
             route = resolve_route(sender, subject, df, exact, generic)
             if route is None:
@@ -469,6 +686,7 @@ def archive_window(start: dt.date, end: dt.date, dry_run: bool = False, interact
 
             summary_rows.append(
                 {
+                    "Date": received_date.isoformat() if received_date else start.isoformat(),
                     "Mailbox": mailbox,
                     "Sender": sender,
                     "Subject": subject,
@@ -505,6 +723,9 @@ def archive_window(start: dt.date, end: dt.date, dry_run: bool = False, interact
         except Exception as e:
             print(f"[WARN] Could not write unknown senders: {e}")
 
+    if not dry_run:
+        _update_summary_workbook(summary_rows, start, end)
+
     if dry_run or interactive_confirm:
         print("Preview of planned actions:")
         for row in summary_rows[:200]:
@@ -513,6 +734,7 @@ def archive_window(start: dt.date, end: dt.date, dry_run: bool = False, interact
             )
 
     return summary_rows
+
 
 
 # ─────────────────────────── CLI ─────────────────────────
@@ -580,3 +802,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
